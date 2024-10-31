@@ -154,6 +154,19 @@ def get_crops_properties() -> dict:
     return crop_props
 
 
+def get_water_consumption_factors() -> dict:
+    """
+    Return a dictionary from renewables/hydropower.yaml
+    with correction factors for hydropower datasets
+    """
+    with open(
+        DATA_DIR / "renewables" / "hydropower.yaml", "r", encoding="utf-8"
+    ) as stream:
+        water_consumption_factors = yaml.safe_load(stream)
+
+    return water_consumption_factors
+
+
 def get_efficiency_solar_photovoltaics() -> xr.DataArray:
     """
     Return an array with PV module efficiencies in function of year and technology.
@@ -164,7 +177,20 @@ def get_efficiency_solar_photovoltaics() -> xr.DataArray:
         EFFICIENCY_RATIO_SOLAR_PV, sep=get_delimiter(filepath=EFFICIENCY_RATIO_SOLAR_PV)
     )
 
-    return dataframe.groupby(["technology", "year"]).mean()["efficiency"].to_xarray()
+    dataframe = dataframe.melt(
+        id_vars=["technology", "year"],
+        value_vars=["mean", "min", "max"],
+        var_name="efficiency_type",
+        value_name="efficiency",
+    )
+
+    # Convert the DataFrame to an xarray Dataset
+    array = dataframe.set_index(["year", "technology", "efficiency_type"])[
+        "efficiency"
+    ].to_xarray()
+    array = array.interpolate_na(dim="year", method="linear")
+
+    return array
 
 
 def default_global_location(database):
@@ -344,7 +370,6 @@ def delete_log():
 
 
 def create_scenario_list(scenarios: list) -> list:
-
     list_scenarios = []
 
     for scenario in scenarios:
@@ -379,10 +404,11 @@ def dump_database(scenario):
     return scenario
 
 
-def load_database(scenario):
+def load_database(scenario, delete=True):
     """
     Load database from a pickle file.
     :param scenario: scenario dictionary
+
     """
 
     if scenario.get("database") is not None:
@@ -394,8 +420,10 @@ def load_database(scenario):
     with open(filepath, "rb") as f:
         scenario["database"] = pickle.load(f)
     del scenario["database filepath"]
+
     # delete the file
-    filepath.unlink()
+    if delete:
+        filepath.unlink()
 
     return scenario
 

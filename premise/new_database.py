@@ -41,6 +41,7 @@ from .inventory_imports import AdditionalInventory, DefaultInventory
 from .report import generate_change_report, generate_summary_report
 from .steel import _update_steel
 from .transport import _update_vehicles
+from .renewables import _update_renewables
 from .utils import (
     clear_existing_cache,
     create_scenario_list,
@@ -502,7 +503,7 @@ class NewDatabase:
         scenarios: List[dict],
         source_version: str = "3.10",
         source_type: str = "brightway",
-        key: bytes = None,
+        key: Union[bytes, str] = None,
         source_db: str = None,
         source_file_path: str = None,
         additional_inventories: List[dict] = None,
@@ -713,7 +714,7 @@ class NewDatabase:
         # with HiddenPrints():
         # Manual import
         # file path and original ecoinvent version
-        data = []
+        data, unlinked = [], []
         filepaths = [
             (FILEPATH_OIL_GAS_INVENTORIES, "3.7"),
             (FILEPATH_CARMA_INVENTORIES, "3.5"),
@@ -779,7 +780,7 @@ class NewDatabase:
             (FILEPATH_NUCLEAR_EPR, "3.8"),
             (FILEPATH_NUCLEAR_SMR, "3.8"),
             (FILEPATH_WAVE, "3.8"),
-            (FILEPATH_FUEL_CELL, "3.9"),
+            (FILEPATH_FUEL_CELL, "3.10"),
             (FILEPATH_CSP, "3.9"),
             (FILEPATH_HYDROGEN_HEATING, "3.9"),
             (FILEPATH_METHANOL_HEATING, "3.9"),
@@ -817,6 +818,10 @@ class NewDatabase:
             datasets = inventory.merge_inventory()
             data.extend(datasets)
             self.database.extend(datasets)
+            unlinked.extend(inventory.list_unlinked)
+
+        if len(unlinked) > 0:
+            raise ValueError("Fix the unlinked exchanges before proceeding")
 
         return data
 
@@ -888,6 +893,10 @@ class NewDatabase:
                 "func": _update_battery,
                 "args": (self.version, self.system_model),
             },
+            "renewables": {
+                "func": _update_renewables,
+                "args": (self.version, self.system_model, self.gains_scenario),
+            },
             "emissions": {
                 "func": _update_emissions,
                 "args": (self.version, self.system_model, self.gains_scenario),
@@ -922,11 +931,14 @@ class NewDatabase:
         }
 
         if isinstance(sectors, str):
+            description = f"Processing scenarios for sector '{sectors}'"
             sectors = [
                 sectors,
             ]
-
-        if sectors is None:
+        elif isinstance(sectors, list):
+            description = f"Processing scenarios for {len(sectors)} sectors"
+        elif sectors is None:
+            description = "Processing scenarios for all sectors"
             sectors = [s for s in list(sector_update_methods.keys())]
 
         assert isinstance(sectors, list), "sector_name should be a list of strings"
@@ -939,9 +951,7 @@ class NewDatabase:
             [item for item in sectors if item not in sector_update_methods]
         )
 
-        with tqdm(
-            total=len(self.scenarios), desc="Processing scenarios", ncols=70
-        ) as pbar_outer:
+        with tqdm(total=len(self.scenarios), desc=description, ncols=70) as pbar_outer:
             for scenario in self.scenarios:
                 # add database to scenarios
                 try:
@@ -977,6 +987,7 @@ class NewDatabase:
         name: str = f"super_db_{datetime.now().strftime('%d-%m-%Y')}",
         filepath: str = None,
         file_format: str = "excel",
+        preserve_original_column: bool = False,
     ) -> None:
         """
         Register a super-structure database,
@@ -984,6 +995,7 @@ class NewDatabase:
         :param name: name of the super-structure database
         :param filepath: filepath of the "scenarios difference file"
         :param file_format: format of the "scenarios difference file" export. Can be "excel", "csv" or "feather".
+        :param preserve_original_column: if True, the original column names are preserved in the super-structure database.
         :return: filepath of the "scenarios difference file"
         """
 
@@ -1019,6 +1031,7 @@ class NewDatabase:
             version=self.version,
             file_format=file_format,
             scenario_list=list_scenarios,
+            preserve_original_column=preserve_original_column,
         )
 
         tmp_scenario = self.scenarios[0]

@@ -1,0 +1,29 @@
+﻿country;capacity factor;type
+Austria;27.5;All
+Belgium;21.5;Onshore
+Belgium;33.6;Offshore
+Canada;30.1;All
+China;23.9;Onshore
+China;26.7;Offshore
+Denmark;25.2;Onshore
+Denmark;43.3;Offshore
+Finland;33.2;All
+France;21.9;All
+Germany;20.1;Onshore
+Germany;36.1;Offshore
+Ireland;28.2;Onshore
+Ireland;34.8;Offshore
+Italy;20.9;All
+Japan;21.5;All
+Korea;21.6;All
+Netherlands;26.2;Onshore
+Netherlands;37.8;Offshore
+Norway;34.6;All
+Portugal;26.7;All
+Spain;24;All
+Sweden;28.6;Onshore
+Sweden;32.5;Offshore
+United Kingdom;27.4;Onshore
+United Kingdom;40.8;Offshore
+United States;44;Offshore
+United States;35.5;Onshore
