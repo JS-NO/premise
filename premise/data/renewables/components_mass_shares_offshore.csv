@@ -1,59 +1,82 @@
-﻿reference product,activity,location,nacelle,rotor,other,transformer + cabinet
-"electricity, medium voltage","market group for electricity, medium voltage",GLO,,,100%,0%
-"sheet rolling, chromium steel","market for sheet rolling, chromium steel",GLO,79%,21%,0%,0%
-"steel, chromium steel 18/8, hot rolled","market for steel, chromium steel 18/8, hot rolled",GLO,79%,21%,0%,0%
-"section bar rolling, steel","market for section bar rolling, steel",GLO,68%,27%,0%,6%
-"glass fibre reinforced plastic, polyamide, injection moulded","market for glass fibre reinforced plastic, polyamide, injection moulded",GLO,28%,72%,0%,0%
-cast iron,market for cast iron,GLO,51%,43%,0%,6%
-"steel, low-alloyed, hot rolled","market for steel, low-alloyed, hot rolled",GLO,95%,0%,0%,5%
-"copper, cathode","market for copper, cathode",GLO,62%,0%,0%,38%
-"wire drawing, copper","market for wire drawing, copper",GLO,62%,0%,0%,38%
-lubricating oil,market for lubricating oil,RoW,13%,0%,0%,87%
-"aluminium, wrought alloy","market for aluminium, wrought alloy",GLO,100%,0%,0%,0%
-"sheet rolling, aluminium","market for sheet rolling, aluminium",GLO,100%,0%,0%,0%
-lubricating oil,market for lubricating oil,RER,13%,0%,0%,87%
-synthetic rubber,market for synthetic rubber,GLO,100%,0%,0%,0%
-"polyethylene, high density, granulate","market for polyethylene, high density, granulate",GLO,0%,0%,0%,100%
-"polyvinylchloride, bulk polymerised","market for polyvinylchloride, bulk polymerised",GLO,0%,0%,0%,100%
-lead,market for lead,GLO,0%,0%,0%,100%
-tin,market for tin,GLO,0%,0%,0%,100%
-waste polyvinylchloride,market for waste polyvinylchloride,CY,0%,0%,0%,100%
-waste polyethylene,market for waste polyethylene,CY,0%,0%,0%,100%
-waste polyvinylchloride,market for waste polyvinylchloride,PE,0%,0%,0%,100%
-waste polyethylene,market for waste polyethylene,PE,0%,0%,0%,100%
-waste polyvinylchloride,market for waste polyvinylchloride,ZA,0%,0%,0%,100%
-waste polyvinylchloride,market for waste polyvinylchloride,IN,0%,0%,0%,100%
-waste polyethylene,market for waste polyethylene,ZA,0%,0%,0%,100%
-waste polyethylene,market for waste polyethylene,IN,0%,0%,0%,100%
-waste polyvinylchloride,market for waste polyvinylchloride,CO,0%,0%,0%,100%
-waste polyethylene,market for waste polyethylene,CO,0%,0%,0%,100%
-waste glass,market for waste glass,CY,28%,72%,0%,0%
-waste polyvinylchloride,market for waste polyvinylchloride,BR,0%,0%,0%,100%
-waste polyvinylchloride,market group for waste polyvinylchloride,RER,0%,0%,0%,100%
-waste polyethylene,market for waste polyethylene,BR,0%,0%,0%,100%
-waste glass,market for waste glass,IN,28%,72%,0%,0%
-waste polyethylene,market group for waste polyethylene,RER,0%,0%,0%,100%
-waste glass,market for waste glass,PE,28%,72%,0%,0%
-waste glass,market for waste glass,ZA,28%,72%,0%,0%
-"waste plastic, mixture","market for waste plastic, mixture",CY,28%,72%,0%,0%
-waste glass,market for waste glass,CO,28%,72%,0%,0%
-"waste plastic, mixture","market for waste plastic, mixture",PE,28%,72%,0%,0%
-"waste plastic, mixture","market for waste plastic, mixture",ZA,28%,72%,0%,0%
-"waste plastic, mixture","market for waste plastic, mixture",IN,28%,72%,0%,0%
-waste polyvinylchloride,market for waste polyvinylchloride,RoW,0%,0%,0%,100%
-waste mineral oil,market for waste mineral oil,CH,13%,0%,0%,87%
-waste glass,market for waste glass,BR,28%,72%,0%,0%
-"waste plastic, mixture","market for waste plastic, mixture",CO,28%,72%,0%,0%
-scrap copper,market for scrap copper,CH,62%,0%,0%,38%
-waste polyethylene,market for waste polyethylene,RoW,0%,0%,0%,100%
-waste glass,market group for waste glass,RER,28%,72%,0%,0%
-"waste plastic, mixture","market for waste plastic, mixture",BR,28%,72%,0%,0%
-"waste plastic, mixture","market group for waste plastic, mixture",RER,28%,72%,0%,0%
-waste mineral oil,market for waste mineral oil,Europe without Switzerland,13%,0%,0%,87%
-scrap copper,market for scrap copper,Europe without Switzerland,28%,72%,0%,0%
-waste mineral oil,market for waste mineral oil,RoW,13%,0%,0%,87%
-"aluminium scrap, new","aluminium scrap, new, Recycled Content cut-off",GLO,100%,0%,0%,0%
-scrap copper,market for scrap copper,RoW,157%,0%,0%,-57%
-"waste plastic, mixture","market for waste plastic, mixture",RoW,28%,72%,0%,0%
-waste glass,market for waste glass,RoW,28%,72%,0%,0%
-"iron scrap, unsorted","iron scrap, unsorted, Recycled Content cut-off",GLO,51%,43%,0%,6%
+﻿part,reference product,activity,location,nacelle,rotor,other,transformer + cabinet,foundation,tower,platform,grid connector,other
+moving,"electricity, medium voltage","market group for electricity, medium voltage",GLO,,,100%,0%,,,,,
+moving,"sheet rolling, chromium steel","market for sheet rolling, chromium steel",GLO,79%,21%,0%,0%,,,,,
+moving,"steel, chromium steel 18/8, hot rolled","market for steel, chromium steel 18/8, hot rolled",GLO,79%,21%,0%,0%,,,,,
+moving,"section bar rolling, steel","market for section bar rolling, steel",GLO,68%,27%,0%,6%,,,,,
+moving,"glass fibre reinforced plastic, polyamide, injection moulded","market for glass fibre reinforced plastic, polyamide, injection moulded",GLO,28%,72%,0%,0%,,,,,
+moving,cast iron,market for cast iron,GLO,51%,43%,0%,6%,,,,,
+moving,"steel, low-alloyed, hot rolled","market for steel, low-alloyed, hot rolled",GLO,95%,0%,0%,5%,,,,,
+moving,"copper, cathode","market for copper, cathode",GLO,62%,0%,0%,38%,,,,,
+moving,"wire drawing, copper","market for wire drawing, copper",GLO,62%,0%,0%,38%,,,,,
+moving,lubricating oil,market for lubricating oil,RoW,13%,0%,0%,87%,,,,,
+moving,"aluminium, wrought alloy","market for aluminium, wrought alloy",GLO,100%,0%,0%,0%,,,,,
+moving,"sheet rolling, aluminium","market for sheet rolling, aluminium",GLO,100%,0%,0%,0%,,,,,
+moving,lubricating oil,market for lubricating oil,RER,13%,0%,0%,87%,,,,,
+moving,synthetic rubber,market for synthetic rubber,GLO,100%,0%,0%,0%,,,,,
+moving,"polyethylene, high density, granulate","market for polyethylene, high density, granulate",GLO,0%,0%,0%,100%,,,,,
+moving,"polyvinylchloride, bulk polymerised","market for polyvinylchloride, bulk polymerised",GLO,0%,0%,0%,100%,,,,,
+moving,lead,market for lead,GLO,0%,0%,0%,100%,,,,,
+moving,tin,market for tin,GLO,0%,0%,0%,100%,,,,,
+moving,waste polyvinylchloride,market for waste polyvinylchloride,CY,0%,0%,0%,100%,,,,,
+moving,waste polyethylene,market for waste polyethylene,CY,0%,0%,0%,100%,,,,,
+moving,waste polyvinylchloride,market for waste polyvinylchloride,PE,0%,0%,0%,100%,,,,,
+moving,waste polyethylene,market for waste polyethylene,PE,0%,0%,0%,100%,,,,,
+moving,waste polyvinylchloride,market for waste polyvinylchloride,ZA,0%,0%,0%,100%,,,,,
+moving,waste polyvinylchloride,market for waste polyvinylchloride,IN,0%,0%,0%,100%,,,,,
+moving,waste polyethylene,market for waste polyethylene,ZA,0%,0%,0%,100%,,,,,
+moving,waste polyethylene,market for waste polyethylene,IN,0%,0%,0%,100%,,,,,
+moving,waste polyvinylchloride,market for waste polyvinylchloride,CO,0%,0%,0%,100%,,,,,
+moving,waste polyethylene,market for waste polyethylene,CO,0%,0%,0%,100%,,,,,
+moving,waste glass,market for waste glass,CY,28%,72%,0%,0%,,,,,
+moving,waste polyvinylchloride,market for waste polyvinylchloride,BR,0%,0%,0%,100%,,,,,
+moving,waste polyvinylchloride,market group for waste polyvinylchloride,RER,0%,0%,0%,100%,,,,,
+moving,waste polyethylene,market for waste polyethylene,BR,0%,0%,0%,100%,,,,,
+moving,waste glass,market for waste glass,IN,28%,72%,0%,0%,,,,,
+moving,waste polyethylene,market group for waste polyethylene,RER,0%,0%,0%,100%,,,,,
+moving,waste glass,market for waste glass,PE,28%,72%,0%,0%,,,,,
+moving,waste glass,market for waste glass,ZA,28%,72%,0%,0%,,,,,
+moving,"waste plastic, mixture","market for waste plastic, mixture",CY,28%,72%,0%,0%,,,,,
+moving,waste glass,market for waste glass,CO,28%,72%,0%,0%,,,,,
+moving,"waste plastic, mixture","market for waste plastic, mixture",PE,28%,72%,0%,0%,,,,,
+moving,"waste plastic, mixture","market for waste plastic, mixture",ZA,28%,72%,0%,0%,,,,,
+moving,"waste plastic, mixture","market for waste plastic, mixture",IN,28%,72%,0%,0%,,,,,
+moving,waste polyvinylchloride,market for waste polyvinylchloride,RoW,0%,0%,0%,100%,,,,,
+moving,waste mineral oil,market for waste mineral oil,CH,13%,0%,0%,87%,,,,,
+moving,waste glass,market for waste glass,BR,28%,72%,0%,0%,,,,,
+moving,"waste plastic, mixture","market for waste plastic, mixture",CO,28%,72%,0%,0%,,,,,
+moving,scrap copper,market for scrap copper,CH,62%,0%,0%,38%,,,,,
+moving,waste polyethylene,market for waste polyethylene,RoW,0%,0%,0%,100%,,,,,
+moving,waste glass,market group for waste glass,RER,28%,72%,0%,0%,,,,,
+moving,"waste plastic, mixture","market for waste plastic, mixture",BR,28%,72%,0%,0%,,,,,
+moving,"waste plastic, mixture","market group for waste plastic, mixture",RER,28%,72%,0%,0%,,,,,
+moving,waste mineral oil,market for waste mineral oil,Europe without Switzerland,13%,0%,0%,87%,,,,,
+moving,scrap copper,market for scrap copper,Europe without Switzerland,28%,72%,0%,0%,,,,,
+moving,waste mineral oil,market for waste mineral oil,RoW,13%,0%,0%,87%,,,,,
+moving,"aluminium scrap, new","aluminium scrap, new, Recycled Content cut-off",GLO,100%,0%,0%,0%,,,,,
+moving,scrap copper,market for scrap copper,RoW,157%,0%,0%,-57%,,,,,
+moving,"waste plastic, mixture","market for waste plastic, mixture",RoW,28%,72%,0%,0%,,,,,
+moving,waste glass,market for waste glass,RoW,28%,72%,0%,0%,,,,,
+moving,"iron scrap, unsorted","iron scrap, unsorted, Recycled Content cut-off",GLO,51%,43%,0%,6%,,,,,
+fixed,"gravel, round","market for gravel, round",RoW,,,,,100%,,,,
+fixed,"sheet rolling, steel","market for sheet rolling, steel",GLO,,,,,,81%,12%,7%,
+fixed,"steel, low-alloyed, hot rolled","market for steel, low-alloyed, hot rolled",GLO,,,,,,81%,12%,7%,
+fixed,reinforcing steel,market for reinforcing steel,GLO,,,,,100%,,,,
+fixed,"excavation, hydraulic digger","market for excavation, hydraulic digger",GLO,,,,,,,,,100%
+fixed,"gravel, crushed","market for gravel, crushed",RoW,,,,,100%,,,,
+fixed,"gravel, crushed","market for gravel, crushed",IN,,,,,100%,,,,
+fixed,lead,market for lead,GLO,,,,,,,,100%,
+fixed,"copper, cathode","market for copper, cathode",GLO,,,,,,,,100%,
+fixed,"wire drawing, copper","market for wire drawing, copper",GLO,,,,,,,,100%,
+fixed,"polyvinylchloride, bulk polymerised","market for polyvinylchloride, bulk polymerised",GLO,,,,,,,,100%,
+fixed,"gravel, crushed","market for gravel, crushed",BR,,,,,100%,,,,
+fixed,"diesel, burned in building machine","market for diesel, burned in building machine",GLO,,,,,,,,,100%
+fixed,"concrete, normal strength","market group for concrete, normal strength",GLO,,,,,100%,,,,
+fixed,"epoxy resin, liquid","market for epoxy resin, liquid",RoW,,,,,,100%,,,
+fixed,"gravel, crushed","market for gravel, crushed",CA-QC,,,,,100%,,,,
+fixed,"welding, arc, steel","market for welding, arc, steel",GLO,,,,,,,100%,,
+fixed,"epoxy resin, liquid","market for epoxy resin, liquid",RER,,,,,,100%,,,
+fixed,"gravel, round","market for gravel, round",CH,,,,,100%,,,,
+fixed,"gravel, crushed","market for gravel, crushed",CH,,,,,100%,,,,
+fixed,scrap steel,market for scrap steel,CH,,,,,,100%,,,
+fixed,scrap steel,market for scrap steel,Europe without Switzerland,,,,,,100%,,,
+fixed,scrap steel,market for scrap steel,RoW,,,,,,100%,,,
