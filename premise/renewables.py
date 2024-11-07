@@ -149,6 +149,20 @@ def get_electricity_production(capacity_factor: float, power: int, lifetime: int
     return power * capacity_factor * 24 * 365 * lifetime
 
 
+def get_components_mass_shares(installation_type: str) -> Dict[str, float]:
+
+    if installation_type == "offshore":
+        filepath = DATA_DIR / "renewables" / "components_mass_shares_offshore.csv"
+    else:
+        filepath = DATA_DIR / "renewables" / "components_mass_shares_onshore.csv"
+
+    dataframe = pd.read_csv(
+        filepath, sep=get_delimiter(filepath=filepath)
+    )
+
+    return dataframe.fillna(0)
+
+
 class WindTurbines(BaseTransformation):
     """
     Class that modifies electricity markets in the database based on IAM output data.
@@ -201,14 +215,99 @@ class WindTurbines(BaseTransformation):
         nacelle = get_nacelle_mass_from_power(power, turbine_type)
         rotor = get_rotor_mass_from_power(power, turbine_type)
 
-        
+        # scale up original ecoinvent datasets
 
-        print(f"{self.year} - {power} - foundation: {foundation} - tower: {tower} - nacelle: {nacelle} - rotor: {rotor}")
+        # we start with offshore wind turbines
+        # we first look at the dataset representing the fixed parts
+
+        offshore_fixed = copy.deepcopy(ws.get_one(
+            self.database,
+            ws.equals("name", "wind power plant construction, 2MW, offshore, fixed parts"),
+            ws.equals("unit", "unit"),
+        ))
+
+        offshore_moving = copy.deepcopy(ws.get_one(
+            self.database,
+            ws.equals("name", "wind power plant construction, 2MW, offshore, moving parts"),
+            ws.equals("unit", "unit"),
+        ))
+
+
+
+        offshore_fixed["name"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, offshore, fixed parts"
+        offshore_moving["name"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, offshore, moving parts"
+        offshore_fixed["reference product"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, offshore, fixed parts"
+        offshore_moving["reference product"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, offshore, moving parts"
+
+        for exc in ws.production(
+            offshore_fixed,
+        ):
+            exc["name"] = offshore_fixed["name"]
+            exc["product"] = offshore_fixed["reference product"]
+
+        for exc in ws.production(
+            offshore_moving,
+        ):
+            exc["name"] = offshore_moving["name"]
+            exc["product"] = offshore_moving["reference product"]
+
+
+        offshore_shares = get_components_mass_shares("offshore")
+
+        COLUMNS_FIXED = [
+            #"nacelle",
+            #"rotor",
+            #"other",
+            #"transformer + cabinet",
+            "foundation",
+            "tower",
+            "platform",
+            "grid connector",
+        ]
+
+        for exc in ws.technosphere(offshore_fixed):
+            shares = offshore_shares.loc[
+                (offshore_shares["activity"] == exc["name"])
+                &(offshore_shares["reference product"] == exc["product"])
+                &(offshore_shares["location"] == exc["location"])
+                &(offshore_shares["part"] == "fixed")
+            ]
+
+            original_amount = copy.deepcopy(exc["amount"])
+            new_amount = 0
+
+            for column in COLUMNS_FIXED:
+                if shares[column].values[0] > 0:
+                    new_amount += (original_amount * shares[column].values[0]) * (power / 1000) / 2
+
+            exc["amount"] = new_amount
+
+        COLUMNS_MOVING = [
+            "nacelle",
+            "rotor",
+            "other",
+            "transformer + cabinet",
+        ]
+
+        for exc in ws.technosphere(offshore_moving):
+            shares = offshore_shares.loc[
+                (offshore_shares["activity"] == exc["name"])
+                &(offshore_shares["reference product"] == exc["product"])
+                &(offshore_shares["location"] == exc["location"])
+                &(offshore_shares["part"] == "moving")
+            ]
+
+            original_amount = copy.deepcopy(exc["amount"])
+            new_amount = 0
+
+            for column in COLUMNS_MOVING:
+                if shares[column].values[0] > 0:
+                    new_amount += (original_amount * shares[column].values[0]) * (power / 1000) / 2
+
+            exc["amount"] = new_amount
+
 
         results = []
-
-        print(self.capacity_factors.sel(country="AT"))
-
 
         for country in self.capacity_factors.coords["country"].values:
             if np.isnan(self.capacity_factors.sel(country=country, type=turbine_type).values):
@@ -222,6 +321,41 @@ class WindTurbines(BaseTransformation):
                 lifetime=20
             ))
 
+            print(country)
+
+            try:
+
+                electricity_ds = copy.deepcopy(ws.get_one(
+                    self.database,
+                    ws.equals("name", "electricity production, wind, 1-3MW turbine, offshore"),
+                    ws.equals("location", country),
+                ))
+
+                # modify the name of the dataset
+                electricity_ds["name"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
+                electricity_ds["reference product"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
+
+                # modify the production xchange name
+                for exc in ws.production(electricity_ds):
+                    exc["name"] = electricity_ds["name"]
+                    exc["product"] = electricity_ds["reference product"]
+
+                # we replace the inputs of wind turbines (fixed and moving parts) with the new datasets
+                for exc in ws.technosphere(
+                        electricity_ds,
+                    ws.equals("unit", "unit")
+
+                ):
+                    exc["name"] = exc["name"].replace("1-3MW", f"{'{:.1f}'.format(power/1000)}MW")
+                    exc["product"] = exc["product"].replace("1-3MW", f"{'{:.1f}'.format(power/1000)}MW")
+                    exc["amount"] = 1/production
+
+                self.database.append(electricity_ds)
+
+            except:
+                pass
+
+
             results.append([country, cf, turbine_type, production, production/20])
 
         table = prettytable.PrettyTable()
@@ -229,11 +363,6 @@ class WindTurbines(BaseTransformation):
         for result in results:
             table.add_row(result)
         print(table)
-
-
-            
-
-
 
 
     def write_log(self, dataset, status="created"):
