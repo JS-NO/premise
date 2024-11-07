@@ -42,6 +42,7 @@ CAPACITY_FACTORS_WIND = DATA_DIR / "renewables" / "wind_capacity_factors.csv"
 logger = create_logger("electricity")
 
 
+
 def _update_renewables(
     scenario,
     version,
