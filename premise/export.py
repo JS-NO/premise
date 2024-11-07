@@ -602,7 +602,12 @@ def generate_new_activities(args):
 
 
 def generate_scenario_difference_file(
-    db_name, origin_db, scenarios, version, scenario_list, biosphere_name
+    db_name,
+    origin_db,
+    scenarios,
+    version,
+    scenario_list,
+    biosphere_name,
 ) -> tuple[DataFrame, list[dict], set[Any]]:
     """
     Generate a scenario difference file for a given list of databases
@@ -780,7 +785,6 @@ def generate_scenario_difference_file(
     df.loc[df["flow type"].isin(["technosphere", "production"]), "from categories"] = (
         None
     )
-    df.loc[df["flow type"] == "production", list_scenarios] = 1.0
 
     df.loc[df["flow type"] == "biosphere", "from database"] = biosphere_name
 
@@ -841,6 +845,7 @@ def generate_superstructure_db(
     version,
     scenario_list,
     file_format="excel",
+    preserve_original_column: bool = False,
 ) -> List[dict]:
     """
     Build a superstructure database from a list of databases
@@ -850,6 +855,9 @@ def generate_superstructure_db(
     :param filepath: the filepath of the new database
     :param version: the version of the new database
     :param file_format: the format of the scenario difference file. Can be "excel", "csv" or "feather".
+    :param preserve_original_column: whether to keep the original column in the scenario difference file
+    :param scenario_list: a list of external scenarios
+
     :return: a superstructure database
     """
 
@@ -872,7 +880,11 @@ def generate_superstructure_db(
     df = df.rename(columns={"from unit": "unit"})
 
     # remove the column `original`
-    df = df.drop(columns=["original"])
+    if not preserve_original_column:
+        df = df.drop(columns=["original"])
+    else:
+        scenario_list = ["original"] + scenario_list
+
     if "unit" in df.columns:
         df = df.drop(columns=["unit"])
 
@@ -888,8 +900,13 @@ def generate_superstructure_db(
     # should not be any, but just in case
     before = len(df)
     df = df.drop_duplicates()
+    # detect duplicate based on `from key` and `to key`
+    df = df.drop_duplicates(subset=["from key", "to key"])
     after = len(df)
     print(f"Dropped {before - after} duplicate(s).")
+
+    for scenario in scenario_list:
+        df.loc[(df["flow type"] == "production") & (df[scenario] == 0), scenario] = 1
 
     # if df is longer than the row limit of Excel,
     # the export to Excel is not an option

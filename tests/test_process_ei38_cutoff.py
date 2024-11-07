@@ -19,8 +19,8 @@ key = os.environ["IAM_FILES_KEY"]
 # convert to bytes
 key = key.encode()
 
-ei_version = "3.10"
-system_model = "consequential"
+ei_version = "3.8"
+system_model = "cutoff"
 
 
 scenarios = [
@@ -34,7 +34,6 @@ scenarios = [
 def test_brightway():
 
     bw2data.projects.set_current(f"ecoinvent-{ei_version}-{system_model}")
-
     clear_inventory_cache()
 
     if f"ecoinvent-{ei_version}-{system_model}" not in bw2data.databases:
