@@ -8,6 +8,7 @@ from collections import defaultdict
 from functools import lru_cache
 import math
 import pandas as pd
+import prettytable
 
 import yaml
 
@@ -60,8 +61,8 @@ def _update_renewables(
         index=scenario.get("index"),
     )
 
-    windturbines.get_component_masses(type="onshore")
-    windturbines.get_component_masses(type="offshore")
+    windturbines.get_component_masses(turbine_type="onshore")
+    windturbines.get_component_masses(turbine_type="offshore")
 
     #windturbines.relink_datasets()
     #scenario["database"] = windturbines.database
@@ -91,10 +92,10 @@ def get_power_from_year(year: int, type: str) -> float:
     """
 
     if type=="onshore":
-        return np.clip(366.95 * year - 733089, None, 8000)
+        return np.clip(74.923 * year - 148319, None, 8000)
     
     else:
-        return np.clip(74.923 * year - 148319, None, 20000)
+        return np.clip(366.95 * year - 733089, None, 20000)
     
 
 def get_foundation_mass_from_power(power: int, type: str) -> float:
@@ -113,10 +114,10 @@ def get_tower_mass_from_power(power: int, type: str) -> float:
     Return tower mass (in tons) based on power and foundation type.
     """
     if type=="onshore":
-        return np.clip(5e-6 * math.pow(power, 2) + 1.254, None, 1200)
+        return np.clip(5e-6 * math.pow(power, 2) + 0.086 * power + 1.254, None, 1200)
     
     else:
-        return np.clip(0.0603 * math.pow(power, 0.9977), None, 800)
+        return np.clip(0.0618 * math.pow(power, 0.9944), None, 1500)
     
 def get_nacelle_mass_from_power(power: int, type: str) -> float:
     """
@@ -126,7 +127,7 @@ def get_nacelle_mass_from_power(power: int, type: str) -> float:
         return np.clip(0.0362 * power + 1.1673, None, 400)
     
     else:
-        return np.clip(0.049 * power - 27.04, None, 500)
+        return np.clip(-7e-7 * math.pow(power, 2) + 0.0554 * power - 38.061 , None, 1000)
 
     
 def get_rotor_mass_from_power(power: int, type: str) -> float:
@@ -137,7 +138,14 @@ def get_rotor_mass_from_power(power: int, type: str) -> float:
         return np.clip(0.0247 * power - 2.6492, None, 250)
     
     else:
-        return np.clip(0.0281 * power - 14.862, None, 250)
+        return np.clip(0.0281 * power - 14.862, None, 500)
+    
+def get_electricity_production(capacity_factor: float, power: int, lifetime: int) -> float:
+    """
+    Return lifetime electricity production
+    """
+
+    return power * capacity_factor * 24 * 365 * lifetime
 
 
 class WindTurbines(BaseTransformation):
@@ -184,15 +192,45 @@ class WindTurbines(BaseTransformation):
 
         self.capacity_factors = get_capacity_factors()
 
-    def get_component_masses(self, type):
+    def get_component_masses(self, turbine_type):
 
-        power = get_power_from_year(self.year, type)
-        foundation = get_foundation_mass_from_power(power, type)
-        tower = get_tower_mass_from_power(power, type)
-        nacelle = get_nacelle_mass_from_power(power, type)
-        rotor = get_rotor_mass_from_power(power, type)
+        power = get_power_from_year(self.year, turbine_type)
+        foundation = get_foundation_mass_from_power(power, turbine_type)
+        tower = get_tower_mass_from_power(power, turbine_type)
+        nacelle = get_nacelle_mass_from_power(power, turbine_type)
+        rotor = get_rotor_mass_from_power(power, turbine_type)
+
+        
 
         print(f"{self.year} - {power} - foundation: {foundation} - tower: {tower} - nacelle: {nacelle} - rotor: {rotor}")
+
+        results = []
+
+        print(self.capacity_factors.sel(country="AT"))
+
+
+        for country in self.capacity_factors.coords["country"].values:
+            if np.isnan(self.capacity_factors.sel(country=country, type=turbine_type).values):
+                cf = self.capacity_factors.sel(country=country, type="all").values
+            else:
+                cf = self.capacity_factors.sel(country=country, type=turbine_type).values
+
+            production = int(get_electricity_production(
+                capacity_factor=cf/100,
+                power=power,
+                lifetime=20
+            ))
+
+            results.append([country, cf, turbine_type, production, production/20])
+
+        table = prettytable.PrettyTable()
+        table.field_names = ["Country", "Capacity factor", "Type", "Lifetime prod [kWh]", "Annual prod [kWh]"]
+        for result in results:
+            table.add_row(result)
+        print(table)
+
+
+            
 
 
 

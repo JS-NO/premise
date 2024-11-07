@@ -1,29 +1,29 @@
 ﻿country;capacity factor;type
-Austria;27.5;All
-Belgium;21.5;Onshore
-Belgium;33.6;Offshore
-Canada;30.1;All
-China;23.9;Onshore
-China;26.7;Offshore
-Denmark;25.2;Onshore
-Denmark;43.3;Offshore
-Finland;33.2;All
-France;21.9;All
-Germany;20.1;Onshore
-Germany;36.1;Offshore
-Ireland;28.2;Onshore
-Ireland;34.8;Offshore
-Italy;20.9;All
-Japan;21.5;All
-Korea;21.6;All
-Netherlands;26.2;Onshore
-Netherlands;37.8;Offshore
-Norway;34.6;All
-Portugal;26.7;All
-Spain;24;All
-Sweden;28.6;Onshore
-Sweden;32.5;Offshore
-United Kingdom;27.4;Onshore
-United Kingdom;40.8;Offshore
-United States;44;Offshore
-United States;35.5;Onshore
+AT;27.5;all
+BE;21.5;onshore
+BE;33.6;offshore
+CA;30.1;all
+CH;23.9;onshore
+CH;26.7;offshore
+DK;25.2;onshore
+DK;43.3;offshore
+FI;33.2;all
+FR;21.9;all
+DE;20.1;onshore
+DE;36.1;offshore
+IE;28.2;onshore
+IE;34.8;offshore
+IT;20.9;all
+JP;21.5;all
+KR;21.6;all
+NL;26.2;onshore
+NL;37.8;offshore
+NO;34.6;all
+PT;26.7;all
+ES;24;all
+SE;28.6;onshore
+SE;32.5;offshore
+UK;27.4;onshore
+UK;40.8;offshore
+US;44;offshore
+US;35.5;onshore
