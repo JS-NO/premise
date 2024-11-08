@@ -232,8 +232,6 @@ class WindTurbines(BaseTransformation):
             ws.equals("unit", "unit"),
         ))
 
-
-
         offshore_fixed["name"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, offshore, fixed parts"
         offshore_moving["name"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, offshore, moving parts"
         offshore_fixed["reference product"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, offshore, fixed parts"
@@ -265,6 +263,8 @@ class WindTurbines(BaseTransformation):
             "grid connector",
         ]
 
+        foundation_mass, tower_mass, platform_mass, grid_connector_mass = 0, 0, 0, 0
+
         for exc in ws.technosphere(offshore_fixed):
             shares = offshore_shares.loc[
                 (offshore_shares["activity"] == exc["name"])
@@ -274,37 +274,21 @@ class WindTurbines(BaseTransformation):
             ]
 
             original_amount = copy.deepcopy(exc["amount"])
-            new_amount = 0
 
-            for column in COLUMNS_FIXED:
-                if shares[column].values[0] > 0:
-                    new_amount += (original_amount * shares[column].values[0]) * (power / 1000) / 2
+            if shares[COLUMNS_FIXED].sum().sum() > 0:
+                if shares["foundation"].values[0] > 0:
+                    foundation_mass += (original_amount * shares["foundation"].values[0])
+                if shares["tower"].values[0] > 0:
+                    tower_mass += (original_amount * shares["tower"].values[0])
+                if shares["platform"].values[0] > 0:
+                    platform_mass += (original_amount * shares["platform"].values[0])
+                if shares["grid connector"].values[0] > 0:
+                    grid_connector_mass += (original_amount * shares["grid connector"].values[0])
 
-            exc["amount"] = new_amount
-
-        COLUMNS_MOVING = [
-            "nacelle",
-            "rotor",
-            "other",
-            "transformer + cabinet",
-        ]
-
-        for exc in ws.technosphere(offshore_moving):
-            shares = offshore_shares.loc[
-                (offshore_shares["activity"] == exc["name"])
-                &(offshore_shares["reference product"] == exc["product"])
-                &(offshore_shares["location"] == exc["location"])
-                &(offshore_shares["part"] == "moving")
-            ]
-
-            original_amount = copy.deepcopy(exc["amount"])
-            new_amount = 0
-
-            for column in COLUMNS_MOVING:
-                if shares[column].values[0] > 0:
-                    new_amount += (original_amount * shares[column].values[0]) * (power / 1000) / 2
-
-            exc["amount"] = new_amount
+        print(f"Foundation mass: {foundation_mass}")
+        print(f"Tower mass: {tower_mass}")
+        print(f"Platform mass: {platform_mass}")
+        print(f"Grid connector mass: {grid_connector_mass}")
 
 
         results = []
