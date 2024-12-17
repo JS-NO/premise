@@ -93,10 +93,10 @@ def get_power_from_year(year: int, type: str) -> float:
     """
 
     if type=="onshore":
-        return np.clip(74.923 * year - 148319, None, 8000)
+        return np.clip(0.1438 * year - 287.06, None, 8000)
     
     else:
-        return np.clip(366.95 * year - 733089, None, 20000)
+        return np.clip(0.4665 * year - 934.33, None, 20000)
     
 
 def get_foundation_mass_from_power(power: int, type: str) -> float:
