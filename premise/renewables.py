@@ -62,8 +62,10 @@ def _update_renewables(
         index=scenario.get("index"),
     )
 
-    windturbines.get_component_masses(turbine_type="onshore")
-    windturbines.get_component_masses(turbine_type="offshore")
+    #windturbines.create_wind_turbine_datasets(turbine_type="onshore")
+    windturbines.create_wind_turbine_datasets(turbine_type="offshore")
+    #windturbines.get_component_masses(turbine_type="onshore")
+    #windturbines.get_component_masses(turbine_type="offshore")
 
     #windturbines.relink_datasets()
     #scenario["database"] = windturbines.database
@@ -149,7 +151,7 @@ def get_electricity_production(capacity_factor: float, power: int, lifetime: int
     return power * capacity_factor * 24 * 365 * lifetime
 
 
-def get_components_mass_shares(installation_type: str) -> Dict[str, float]:
+def get_components_mass_shares(installation_type: str) -> pd.DataFrame:
 
     if installation_type == "offshore":
         filepath = DATA_DIR / "renewables" / "components_mass_shares_offshore.csv"
