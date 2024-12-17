@@ -296,7 +296,7 @@ class WindTurbines(BaseTransformation):
             # "grid connector",
         ]
 
-        nacelle_mass, rotor_mass, other_mass, transformer + cabinet_mass = 0, 0, 0, 0
+        nacelle_mass, rotor_mass, other_mass, transformer_mass = 0, 0, 0, 0
 
         for exc in ws.technosphere(offshore_moving):
             shares = offshore_shares.loc[
@@ -316,7 +316,7 @@ class WindTurbines(BaseTransformation):
                 if shares["other"].values[0] > 0:
                     other_mass += (original_amount * shares["other"].values[0])
                 if shares["transformer + cabinet"].values[0] > 0:
-                    transformer + cabinet_mass += (original_amount * shares["transformer + cabinet"].values[0])
+                    transformer_mass += (original_amount * shares["transformer + cabinet"].values[0])
 
         print(f"Foundation mass: {foundation_mass}")
         print(f"Tower mass: {tower_mass}")
@@ -325,9 +325,120 @@ class WindTurbines(BaseTransformation):
         print(f"Nacelle mass: {nacelle_mass}")
         print(f"Rotor mass: {rotor_mass}")
         print(f"Other mass: {other_mass}")
-        print(f"Transformer + cabinet: {transformer + cabinet}")
+        print(f"Transformer + cabinet: {transformer_mass}")
 
 
+        #scale up of onshore moving parts (copy of the above, but changing offshore to onshore)
+        onshore_fixed = copy.deepcopy(ws.get_one(
+            self.database,
+            ws.equals("name", "wind power plant construction, 800kW, fixed parts"),
+            ws.equals("unit", "unit"),
+        ))
+
+        onshore_moving = copy.deepcopy(ws.get_one(
+            self.database,
+            ws.equals("name", "wind power plant construction, 800kW, moving parts"),
+            ws.equals("unit", "unit"),
+        ))
+
+        ##changing names - Does this change the names or should they still be equal, meaning without the onshore part
+
+        onshore_fixed["name"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, onshore, fixed parts"
+        onshore_moving["name"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, onshore, moving parts"
+        onshore_fixed["reference product"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, onshore, fixed parts"
+        onshore_moving["reference product"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, onshore, moving parts"
+
+        for exc in ws.production(
+            onshore_fixed,
+        ):
+            exc["name"] = onshore_fixed["name"]
+            exc["product"] = onshore_fixed["reference product"]
+
+        for exc in ws.production(
+            onshore_moving,
+        ):
+            exc["name"] = onshore_moving["name"]
+            exc["product"] = onshore_moving["reference product"]
+
+
+        onshore_shares = get_components_mass_shares("onshore")
+
+        COLUMNS_FIXED = [
+            #"nacelle",
+            #"rotor",
+            #"other",
+            #"transformer + cabinet",
+            "foundation",
+            "tower",
+            "platform",
+            "grid connector",
+        ]
+
+        foundation_mass, tower_mass, platform_mass, grid_connector_mass = 0, 0, 0, 0
+
+        for exc in ws.technosphere(onshore_fixed):
+            shares = onshore_shares.loc[
+                (onshore_shares["activity"] == exc["name"])
+                &(onshore_shares["reference product"] == exc["product"])
+                &(onshore_shares["location"] == exc["location"])
+                &(onshore_shares["part"] == "fixed")
+            ]
+
+            original_amount = copy.deepcopy(exc["amount"])
+
+            if shares[COLUMNS_FIXED].sum().sum() > 0:
+                if shares["foundation"].values[0] > 0:
+                    foundation_mass += (original_amount * shares["foundation"].values[0])
+                if shares["tower"].values[0] > 0:
+                    tower_mass += (original_amount * shares["tower"].values[0])
+                if shares["platform"].values[0] > 0:
+                    platform_mass += (original_amount * shares["platform"].values[0])
+                if shares["grid connector"].values[0] > 0:
+                    grid_connector_mass += (original_amount * shares["grid connector"].values[0])
+
+        COLUMNS_MOVING = [
+            "nacelle",
+            "rotor",
+            "other",
+            "transformer + cabinet",
+            # "foundation",
+            # "tower",
+            # "platform",
+            # "grid connector",
+        ]
+
+        nacelle_mass, rotor_mass, other_mass, transformer_mass = 0, 0, 0, 0
+
+        for exc in ws.technosphere(onshore_moving):
+            shares = onshore_shares.loc[
+                (onshore_shares["activity"] == exc["name"])
+                & (onshore_shares["reference product"] == exc["product"])
+                & (onshore_shares["location"] == exc["location"])
+                & (onshore_shares["part"] == "moving")
+                ]
+
+            original_amount = copy.deepcopy(exc["amount"])
+
+            if shares[COLUMNS_MOVING].sum().sum() > 0:
+                if shares["nacelle"].values[0] > 0:
+                    nacelle_mass += (original_amount * shares["nacelle"].values[0])
+                if shares["rotor"].values[0] > 0:
+                    rotor_mass += (original_amount * shares["rotor"].values[0])
+                if shares["other"].values[0] > 0:
+                    other_mass += (original_amount * shares["other"].values[0])
+                if shares["transformer + cabinet"].values[0] > 0:
+                    transformer_mass += (original_amount * shares["transformer + cabinet"].values[0])
+
+
+        ##Now it prints again the same things with the same names, but is that a problem?
+        print(f"Foundation mass: {foundation_mass}")
+        print(f"Tower mass: {tower_mass}")
+        print(f"Platform mass: {platform_mass}")
+        print(f"Grid connector mass: {grid_connector_mass}")
+        print(f"Nacelle mass: {nacelle_mass}")
+        print(f"Rotor mass: {rotor_mass}")
+        print(f"Other mass: {other_mass}")
+        print(f"Transformer + cabinet: {transformer_mass}")
 
 
 
