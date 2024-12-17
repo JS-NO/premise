@@ -162,6 +162,42 @@ def get_components_mass_shares(installation_type: str) -> Dict[str, float]:
 
     return dataframe.fillna(0)
 
+def create_new_dataset(dataset, power):
+
+    new_dataset = copy.deepcopy(dataset)
+
+    new_dataset["name"] = new_dataset["name"].replace("2MW", f"{'{:.1f}'.format(power/1000)}MW")
+    new_dataset["reference product"] = new_dataset["reference product"].replace("2MW", f"{'{:.1f}'.format(power/1000)}MW")
+    new_dataset["code"] = str(uuid.uuid4().hex)
+
+    for exc in ws.production(new_dataset):
+        exc["name"] = new_dataset["name"]
+        exc["product"] = new_dataset["reference product"]
+        if "input" in exc:
+            del exc["input"]
+
+    return new_dataset
+
+
+def get_current_masses_from_dataset(dataset, shares, components, components_type) -> Dict[str, float]:
+
+    components_masses = {component: 0 for component in components}
+
+    for exc in ws.technosphere(dataset):
+        df_share = shares.loc[
+            (shares["activity"] == exc["name"])
+            &(shares["reference product"] == exc["product"])
+            &(shares["location"] == exc["location"])
+            &(shares["part"] == components_type)
+        ]
+
+        if df_share[components].sum().sum() > 0:
+            for component in components:
+                if df_share[component].values[0] > 0:
+                    components_masses[component] += (exc["amount"] * df_share[component].values[0])
+
+    return components_masses
+
 
 class WindTurbines(BaseTransformation):
     """
@@ -207,48 +243,45 @@ class WindTurbines(BaseTransformation):
 
         self.capacity_factors = get_capacity_factors()
 
-    def get_component_masses(self, turbine_type):
+    def get_target_component_masses(self, turbine_type) -> Dict[str, float]:
 
         power = get_power_from_year(self.year, turbine_type)
-        foundation = get_foundation_mass_from_power(power, turbine_type)
-        tower = get_tower_mass_from_power(power, turbine_type)
-        nacelle = get_nacelle_mass_from_power(power, turbine_type)
-        rotor = get_rotor_mass_from_power(power, turbine_type)
+        foundation = get_foundation_mass_from_power(power, turbine_type) * 1000
+        tower = get_tower_mass_from_power(power, turbine_type) * 1000
+        nacelle = get_nacelle_mass_from_power(power, turbine_type) * 1000
+        rotor = get_rotor_mass_from_power(power, turbine_type) * 1000
+
+        return {"foundation": foundation, "tower": tower, "nacelle": nacelle, "rotor": rotor}
+
+    def create_wind_turbine_datasets(self, turbine_type):
+        """
+        Create new datasets for wind turbines based on the power and turbine type.
+        """
 
         # scale up original ecoinvent datasets
 
         # we start with offshore wind turbines
         # we first look at the dataset representing the fixed parts
 
-        offshore_fixed = copy.deepcopy(ws.get_one(
-            self.database,
-            ws.equals("name", "wind power plant construction, 2MW, offshore, fixed parts"),
-            ws.equals("unit", "unit"),
-        ))
+        power = get_power_from_year(self.year, turbine_type)
 
-        offshore_moving = copy.deepcopy(ws.get_one(
-            self.database,
-            ws.equals("name", "wind power plant construction, 2MW, offshore, moving parts"),
-            ws.equals("unit", "unit"),
-        ))
+        offshore_fixed = create_new_dataset(
+            ws.get_one(
+                self.database,
+                ws.equals("name", "wind power plant construction, 2MW, offshore, fixed parts"),
+                ws.equals("unit", "unit"),
+            ),
+            power
+        )
 
-        offshore_fixed["name"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, offshore, fixed parts"
-        offshore_moving["name"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, offshore, moving parts"
-        offshore_fixed["reference product"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, offshore, fixed parts"
-        offshore_moving["reference product"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, offshore, moving parts"
-
-        for exc in ws.production(
-            offshore_fixed,
-        ):
-            exc["name"] = offshore_fixed["name"]
-            exc["product"] = offshore_fixed["reference product"]
-
-        for exc in ws.production(
-            offshore_moving,
-        ):
-            exc["name"] = offshore_moving["name"]
-            exc["product"] = offshore_moving["reference product"]
-
+        offshore_moving = create_new_dataset(
+            ws.get_one(
+                self.database,
+                ws.equals("name", "wind power plant construction, 2MW, offshore, moving parts"),
+                ws.equals("unit", "unit"),
+            ),
+            power
+        )
 
         offshore_shares = get_components_mass_shares("offshore")
 
@@ -263,183 +296,47 @@ class WindTurbines(BaseTransformation):
             "grid connector",
         ]
 
-        foundation_mass, tower_mass, platform_mass, grid_connector_mass = 0, 0, 0, 0
+        COLUMNS_MOVING = [
+            "nacelle",
+            "rotor",
+            "other",
+            "transformer + cabinet",
+        ]
 
-        for exc in ws.technosphere(offshore_fixed):
-            shares = offshore_shares.loc[
+        current_component_masses = get_current_masses_from_dataset(offshore_fixed, offshore_shares, COLUMNS_FIXED, "fixed")
+        print(get_current_masses_from_dataset(offshore_moving, offshore_shares, COLUMNS_MOVING, "moving"))
+        current_component_masses.update(get_current_masses_from_dataset(offshore_moving, offshore_shares, COLUMNS_MOVING, "moving"))
+        target_component_masses = self.get_target_component_masses("offshore")
+
+        print("current", current_component_masses)
+        print()
+        print("target", target_component_masses)
+        print()
+
+        scaling_factors = {
+            component: target_component_masses.get(component, 0) / current_component_masses.get(component, 0)
+            for component in COLUMNS_FIXED
+        }
+
+        for exc in ws.technosphere(
+            offshore_fixed,
+        ):
+            df_share = offshore_shares.loc[
                 (offshore_shares["activity"] == exc["name"])
                 &(offshore_shares["reference product"] == exc["product"])
                 &(offshore_shares["location"] == exc["location"])
                 &(offshore_shares["part"] == "fixed")
             ]
 
-            original_amount = copy.deepcopy(exc["amount"])
+            weighted_scaling_factor = 0
 
-            if shares[COLUMNS_FIXED].sum().sum() > 0:
-                if shares["foundation"].values[0] > 0:
-                    foundation_mass += (original_amount * shares["foundation"].values[0])
-                if shares["tower"].values[0] > 0:
-                    tower_mass += (original_amount * shares["tower"].values[0])
-                if shares["platform"].values[0] > 0:
-                    platform_mass += (original_amount * shares["platform"].values[0])
-                if shares["grid connector"].values[0] > 0:
-                    grid_connector_mass += (original_amount * shares["grid connector"].values[0])
+            if df_share[COLUMNS_FIXED].sum().sum() > 0:
+                for component in COLUMNS_FIXED:
+                    if df_share[component].values[0] > 0:
+                        weighted_scaling_factor += scaling_factors[component] * df_share[component].values[0]
 
-        COLUMNS_MOVING = [
-            "nacelle",
-            "rotor",
-            "other",
-            "transformer + cabinet",
-            # "foundation",
-            # "tower",
-            # "platform",
-            # "grid connector",
-        ]
-
-        nacelle_mass, rotor_mass, other_mass, transformer_mass = 0, 0, 0, 0
-
-        for exc in ws.technosphere(offshore_moving):
-            shares = offshore_shares.loc[
-                (offshore_shares["activity"] == exc["name"])
-                & (offshore_shares["reference product"] == exc["product"])
-                & (offshore_shares["location"] == exc["location"])
-                & (offshore_shares["part"] == "moving")
-                ]
-
-            original_amount = copy.deepcopy(exc["amount"])
-
-            if shares[COLUMNS_MOVING].sum().sum() > 0:
-                if shares["nacelle"].values[0] > 0:
-                    nacelle_mass += (original_amount * shares["nacelle"].values[0])
-                if shares["rotor"].values[0] > 0:
-                    rotor_mass += (original_amount * shares["rotor"].values[0])
-                if shares["other"].values[0] > 0:
-                    other_mass += (original_amount * shares["other"].values[0])
-                if shares["transformer + cabinet"].values[0] > 0:
-                    transformer_mass += (original_amount * shares["transformer + cabinet"].values[0])
-
-        print(f"Foundation mass: {foundation_mass}")
-        print(f"Tower mass: {tower_mass}")
-        print(f"Platform mass: {platform_mass}")
-        print(f"Grid connector mass: {grid_connector_mass}")
-        print(f"Nacelle mass: {nacelle_mass}")
-        print(f"Rotor mass: {rotor_mass}")
-        print(f"Other mass: {other_mass}")
-        print(f"Transformer + cabinet: {transformer_mass}")
-
-
-        #scale up of onshore moving parts (copy of the above, but changing offshore to onshore)
-        onshore_fixed = copy.deepcopy(ws.get_one(
-            self.database,
-            ws.equals("name", "wind power plant construction, 800kW, fixed parts"),
-            ws.equals("unit", "unit"),
-        ))
-
-        onshore_moving = copy.deepcopy(ws.get_one(
-            self.database,
-            ws.equals("name", "wind power plant construction, 800kW, moving parts"),
-            ws.equals("unit", "unit"),
-        ))
-
-        ##changing names - Does this change the names or should they still be equal, meaning without the onshore part
-
-        onshore_fixed["name"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, onshore, fixed parts"
-        onshore_moving["name"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, onshore, moving parts"
-        onshore_fixed["reference product"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, onshore, fixed parts"
-        onshore_moving["reference product"] = f"wind power plant construction, {'{:.1f}'.format(power/1000)}MW, onshore, moving parts"
-
-        for exc in ws.production(
-            onshore_fixed,
-        ):
-            exc["name"] = onshore_fixed["name"]
-            exc["product"] = onshore_fixed["reference product"]
-
-        for exc in ws.production(
-            onshore_moving,
-        ):
-            exc["name"] = onshore_moving["name"]
-            exc["product"] = onshore_moving["reference product"]
-
-
-        onshore_shares = get_components_mass_shares("onshore")
-
-        COLUMNS_FIXED = [
-            #"nacelle",
-            #"rotor",
-            #"other",
-            #"transformer + cabinet",
-            "foundation",
-            "tower",
-            "platform",
-            "grid connector",
-        ]
-
-        foundation_mass, tower_mass, platform_mass, grid_connector_mass = 0, 0, 0, 0
-
-        for exc in ws.technosphere(onshore_fixed):
-            shares = onshore_shares.loc[
-                (onshore_shares["activity"] == exc["name"])
-                &(onshore_shares["reference product"] == exc["product"])
-                &(onshore_shares["location"] == exc["location"])
-                &(onshore_shares["part"] == "fixed")
-            ]
-
-            original_amount = copy.deepcopy(exc["amount"])
-
-            if shares[COLUMNS_FIXED].sum().sum() > 0:
-                if shares["foundation"].values[0] > 0:
-                    foundation_mass += (original_amount * shares["foundation"].values[0])
-                if shares["tower"].values[0] > 0:
-                    tower_mass += (original_amount * shares["tower"].values[0])
-                if shares["platform"].values[0] > 0:
-                    platform_mass += (original_amount * shares["platform"].values[0])
-                if shares["grid connector"].values[0] > 0:
-                    grid_connector_mass += (original_amount * shares["grid connector"].values[0])
-
-        COLUMNS_MOVING = [
-            "nacelle",
-            "rotor",
-            "other",
-            "transformer + cabinet",
-            # "foundation",
-            # "tower",
-            # "platform",
-            # "grid connector",
-        ]
-
-        nacelle_mass, rotor_mass, other_mass, transformer_mass = 0, 0, 0, 0
-
-        for exc in ws.technosphere(onshore_moving):
-            shares = onshore_shares.loc[
-                (onshore_shares["activity"] == exc["name"])
-                & (onshore_shares["reference product"] == exc["product"])
-                & (onshore_shares["location"] == exc["location"])
-                & (onshore_shares["part"] == "moving")
-                ]
-
-            original_amount = copy.deepcopy(exc["amount"])
-
-            if shares[COLUMNS_MOVING].sum().sum() > 0:
-                if shares["nacelle"].values[0] > 0:
-                    nacelle_mass += (original_amount * shares["nacelle"].values[0])
-                if shares["rotor"].values[0] > 0:
-                    rotor_mass += (original_amount * shares["rotor"].values[0])
-                if shares["other"].values[0] > 0:
-                    other_mass += (original_amount * shares["other"].values[0])
-                if shares["transformer + cabinet"].values[0] > 0:
-                    transformer_mass += (original_amount * shares["transformer + cabinet"].values[0])
-
-
-        ##Now it prints again the same things with the same names, but is that a problem?
-        print(f"Foundation mass: {foundation_mass}")
-        print(f"Tower mass: {tower_mass}")
-        print(f"Platform mass: {platform_mass}")
-        print(f"Grid connector mass: {grid_connector_mass}")
-        print(f"Nacelle mass: {nacelle_mass}")
-        print(f"Rotor mass: {rotor_mass}")
-        print(f"Other mass: {other_mass}")
-        print(f"Transformer + cabinet: {transformer_mass}")
-
+            if weighted_scaling_factor > 0:
+                exc["amount"] *= weighted_scaling_factor
 
 
         results = []
@@ -452,7 +349,7 @@ class WindTurbines(BaseTransformation):
 
             production = int(get_electricity_production(
                 capacity_factor=cf/100,
-                power=power,
+                power=int(power),
                 lifetime=20
             ))
 
@@ -469,11 +366,14 @@ class WindTurbines(BaseTransformation):
                 # modify the name of the dataset
                 electricity_ds["name"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
                 electricity_ds["reference product"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
+                electricity_ds["code"] = str(uuid.uuid4().hex)
 
                 # modify the production xchange name
                 for exc in ws.production(electricity_ds):
                     exc["name"] = electricity_ds["name"]
                     exc["product"] = electricity_ds["reference product"]
+                    if "input" in exc:
+                        del exc["input"]
 
                 # we replace the inputs of wind turbines (fixed and moving parts) with the new datasets
                 for exc in ws.technosphere(
