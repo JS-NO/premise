@@ -136,10 +136,10 @@ def get_rotor_mass_from_power(power: int, type: str) -> float:
     Return rotor mass (in tons) based on power and foundation type.
     """
     if type=="onshore":
-        return np.clip(0.0247 * power - 2.6492, None, 250)
+        return np.clip(0.0246 * power - 2.8149, None, 250)
     
     else:
-        return np.clip(0.0281 * power - 14.862, None, 500)
+        return np.clip(0.0267 * power - 10.29, None, 500)
     
 def get_electricity_production(capacity_factor: float, power: int, lifetime: int) -> float:
     """
