@@ -285,10 +285,50 @@ class WindTurbines(BaseTransformation):
                 if shares["grid connector"].values[0] > 0:
                     grid_connector_mass += (original_amount * shares["grid connector"].values[0])
 
+        COLUMNS_MOVING = [
+            "nacelle",
+            "rotor",
+            "other",
+            "transformer + cabinet",
+            # "foundation",
+            # "tower",
+            # "platform",
+            # "grid connector",
+        ]
+
+        nacelle_mass, rotor_mass, other_mass, transformer + cabinet_mass = 0, 0, 0, 0
+
+        for exc in ws.technosphere(offshore_moving):
+            shares = offshore_shares.loc[
+                (offshore_shares["activity"] == exc["name"])
+                & (offshore_shares["reference product"] == exc["product"])
+                & (offshore_shares["location"] == exc["location"])
+                & (offshore_shares["part"] == "moving")
+                ]
+
+            original_amount = copy.deepcopy(exc["amount"])
+
+            if shares[COLUMNS_MOVING].sum().sum() > 0:
+                if shares["nacelle"].values[0] > 0:
+                    nacelle_mass += (original_amount * shares["nacelle"].values[0])
+                if shares["rotor"].values[0] > 0:
+                    rotor_mass += (original_amount * shares["rotor"].values[0])
+                if shares["other"].values[0] > 0:
+                    other_mass += (original_amount * shares["other"].values[0])
+                if shares["transformer + cabinet"].values[0] > 0:
+                    transformer + cabinet_mass += (original_amount * shares["transformer + cabinet"].values[0])
+
         print(f"Foundation mass: {foundation_mass}")
         print(f"Tower mass: {tower_mass}")
         print(f"Platform mass: {platform_mass}")
         print(f"Grid connector mass: {grid_connector_mass}")
+        print(f"Nacelle mass: {nacelle_mass}")
+        print(f"Rotor mass: {rotor_mass}")
+        print(f"Other mass: {other_mass}")
+        print(f"Transformer + cabinet: {transformer + cabinet}")
+
+
+
 
 
         results = []
