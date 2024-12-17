@@ -125,10 +125,10 @@ def get_nacelle_mass_from_power(power: int, type: str) -> float:
     Return nacelle mass (in tons) based on power and foundation type.
     """
     if type=="onshore":
-        return np.clip(0.0362 * power + 1.1673, None, 400)
+        return np.clip(0.0376 * power - 0.8092, None, 400)
     
     else:
-        return np.clip(-7e-7 * math.pow(power, 2) + 0.0554 * power - 38.061 , None, 1000)
+        return np.clip(0.0486 * power - 25.633 , None, 1000)
 
     
 def get_rotor_mass_from_power(power: int, type: str) -> float:
