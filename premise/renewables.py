@@ -132,7 +132,7 @@ def get_nacelle_mass_from_power(power: int, type: str) -> float:
         return np.clip(0.0376 * power - 0.8092, None, 400)
     
     else:
-        return np.clip(0.0486 * power - 25.633 , None, 1000)
+        return np.clip(0.0486 * power - 25.633 , None, 1100)
 
     
 def get_rotor_mass_from_power(power: int, type: str) -> float:
@@ -143,7 +143,7 @@ def get_rotor_mass_from_power(power: int, type: str) -> float:
         return np.clip(0.0246 * power - 2.8149, None, 250)
     
     else:
-        return np.clip(0.0267 * power - 10.29, None, 500)
+        return np.clip(0.0267 * power - 10.29, None, 600)
     
 def get_electricity_production(capacity_factor: float, power: int, lifetime: int) -> float:
     """
