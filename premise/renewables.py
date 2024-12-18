@@ -64,6 +64,7 @@ def _update_renewables(
 
     #windturbines.create_wind_turbine_datasets(turbine_type="onshore")
     windturbines.create_wind_turbine_datasets(turbine_type="offshore")
+    windturbines.create_wind_turbine_datasets(turbine_type="onshore")
     #windturbines.get_component_masses(turbine_type="onshore")
     #windturbines.get_component_masses(turbine_type="offshore")
 
@@ -197,7 +198,8 @@ def get_current_masses_from_dataset(dataset, shares, components, components_type
         if df_share[components].sum().sum() > 0:
             for component in components:
                 if df_share[component].values[0] > 0:
-                    components_masses[component] += (exc["amount"] * df_share[component].values[0])
+                    if exc["amount"]>0:
+                        components_masses[component] += (exc["amount"] * df_share[component].values[0])
 
     return components_masses
 
@@ -248,11 +250,11 @@ class WindTurbines(BaseTransformation):
 
     def get_target_component_masses(self, turbine_type) -> Dict[str, float]:
 
-        power = get_power_from_year(self.year, turbine_type)
-        foundation = get_foundation_mass_from_power(power, turbine_type) * 1000
-        tower = get_tower_mass_from_power(power, turbine_type) * 1000
-        nacelle = get_nacelle_mass_from_power(power, turbine_type) * 1000
-        rotor = get_rotor_mass_from_power(power, turbine_type) * 1000
+        power = get_power_from_year(self.year, turbine_type) # in kW
+        foundation = get_foundation_mass_from_power(power, turbine_type) * 1000 # in kg
+        tower = get_tower_mass_from_power(power, turbine_type) * 1000 # in kg
+        nacelle = get_nacelle_mass_from_power(power, turbine_type) * 1000 # in kg
+        rotor = get_rotor_mass_from_power(power, turbine_type) * 1000 # in kg
 
         return {"foundation": foundation, "tower": tower, "nacelle": nacelle, "rotor": rotor}
 
@@ -268,28 +270,35 @@ class WindTurbines(BaseTransformation):
 
         power = get_power_from_year(self.year, turbine_type)
 
-        offshore_fixed = create_new_dataset(
+        if turbine_type == "onshore":
+            dataset_name_to_copy = "wind power plant construction, 800kW, fixed parts"
+        else:
+            dataset_name_to_copy = "wind power plant construction, 2MW, offshore, fixed parts"
+
+        fixed = create_new_dataset(
             ws.get_one(
                 self.database,
-                ws.equals("name", "wind power plant construction, 2MW, offshore, fixed parts"),
+                ws.equals("name", dataset_name_to_copy),
                 ws.equals("unit", "unit"),
             ),
             power
         )
 
+        if turbine_type == "onshore":
+            dataset_name_to_copy = "wind power plant construction, 800kW, moving parts"
+        else:
+            dataset_name_to_copy = "wind power plant construction, 2MW, offshore, moving parts"
 
-        offshore_moving = create_new_dataset(
+        moving = create_new_dataset(
             ws.get_one(
                 self.database,
-                ws.equals("name", "wind power plant construction, 2MW, offshore, moving parts"),
+                ws.equals("name", dataset_name_to_copy),
                 ws.equals("unit", "unit"),
             ),
             power
         )
 
-
-
-        offshore_shares = get_components_mass_shares("offshore")
+        components_shares = get_components_mass_shares(turbine_type)
 
         COLUMNS = {
             "fixed": [
@@ -306,38 +315,41 @@ class WindTurbines(BaseTransformation):
             ]
         }
 
-
-        current_component_masses = get_current_masses_from_dataset(offshore_fixed, offshore_shares, COLUMNS["fixed"], "fixed")
-        current_component_masses.update(get_current_masses_from_dataset(offshore_moving, offshore_shares, COLUMNS["moving"], "moving"))
-        target_component_masses = self.get_target_component_masses("offshore")
+        current_component_masses = get_current_masses_from_dataset(fixed, components_shares, COLUMNS["fixed"], "fixed")
+        current_component_masses.update(get_current_masses_from_dataset(moving, components_shares, COLUMNS["moving"], "moving"))
+        target_component_masses = self.get_target_component_masses(turbine_type)
 
         scaling_factors = {
-            component: target_component_masses.get(component, 0) / current_component_masses.get(component, 0)
+            component: target_component_masses.get(component, 0) / current_component_masses.get(component, 1)
             for component in COLUMNS["fixed"] + COLUMNS["moving"]
+                             if current_component_masses.get(component, 1) > 0
         }
 
         print("current")
         print(current_component_masses)
         print()
+
         print("target")
         print(target_component_masses)
         print()
+
         print("scaling_factors")
         print(scaling_factors)
+        print()
 
 
         for components_type, offshore_ds in {
-            "moving": offshore_moving,
-            "fixed": offshore_fixed,
+            "moving": moving,
+            "fixed": fixed,
         }.items():
             for exc in ws.technosphere(
                 offshore_ds,
             ):
-                df_share = offshore_shares.loc[
-                    (offshore_shares["activity"] == exc["name"])
-                    &(offshore_shares["reference product"] == exc["product"])
-                    &(offshore_shares["location"] == exc["location"])
-                    &(offshore_shares["part"] == components_type)
+                df_share = components_shares.loc[
+                    (components_shares["activity"] == exc["name"])
+                    &(components_shares["reference product"] == exc["product"])
+                    &(components_shares["location"] == exc["location"])
+                    &(components_shares["part"] == components_type)
                 ]
 
                 weighted_scaling_factor = 0
@@ -351,9 +363,9 @@ class WindTurbines(BaseTransformation):
                     exc["amount"] *= weighted_scaling_factor
 
         # add the new dataset to the database
-        self.database.append(offshore_fixed)
+        self.database.append(fixed)
         # add the new dataset to the database
-        self.database.append(offshore_moving)
+        self.database.append(moving)
 
 
         results = []
@@ -372,15 +384,20 @@ class WindTurbines(BaseTransformation):
 
             try:
 
+                if turbine_type == "onshore":
+                    dataset_name = "electricity production, wind, <1MW turbine, onshore"
+                else:
+                    dataset_name = "electricity production, wind, 1-3MW turbine, offshore"
+
                 electricity_ds = copy.deepcopy(ws.get_one(
                     self.database,
-                    ws.equals("name", "electricity production, wind, 1-3MW turbine, offshore"),
+                    ws.equals("name", dataset_name),
                     ws.equals("location", country),
                 ))
 
                 # modify the name of the dataset
                 electricity_ds["name"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
-                electricity_ds["reference product"] = f"electricity production, high voltage"
+                electricity_ds["reference product"] = f"electricity, high voltage"
                 electricity_ds["code"] = str(uuid.uuid4().hex)
 
                 # modify the production exchange name
@@ -401,18 +418,18 @@ class WindTurbines(BaseTransformation):
                         "amount": 1/production,
                         "type": "technosphere",
                         "unit": "unit",
-                        "name": offshore_fixed["name"],
-                        "product": offshore_fixed["reference product"],
-                        "location": offshore_fixed["location"],
+                        "name": fixed["name"],
+                        "product": fixed["reference product"],
+                        "location": fixed["location"],
                         "uncertainty type": 0,
                     },
                     {
                         "amount": 1/production,
                         "type": "technosphere",
                         "unit": "unit",
-                        "name": offshore_moving["name"],
-                        "product": offshore_moving["reference product"],
-                        "location": offshore_moving["location"],
+                        "name": moving["name"],
+                        "product": moving["reference product"],
+                        "location": moving["location"],
                         "uncertainty type": 0,
                     }
                 ])

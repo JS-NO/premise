@@ -1,4 +1,4 @@
-﻿part,reference product,activity,location,nacelle,rotor,other,transformer + cabinet + electrical cabinet,foundation,tower,platform,grid connector,,
+﻿part,reference product,activity,location,nacelle,rotor,other,transformer + cabinet,foundation,tower,platform,grid connector,,
 moving,"electricity, medium voltage","market group for electricity, medium voltage",GLO,,,1.00,,,,,,,
 moving,"sheet rolling, chromium steel","market for sheet rolling, chromium steel",GLO,0.79,0.21,,,,,,,,
 moving,"steel, chromium steel 18/8, hot rolled","market for steel, chromium steel 18/8, hot rolled",GLO,0.79,0.21,,,,,,,,
