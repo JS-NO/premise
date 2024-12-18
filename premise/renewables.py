@@ -277,12 +277,6 @@ class WindTurbines(BaseTransformation):
             power
         )
 
-        # add the new dataset to the database
-        self.database.append(offshore_fixed)
-
-        print(f"Creating offshore wind turbine datasets for {turbine_type} with power {power} kW")
-        print(offshore_fixed["name"], offshore_fixed["reference product"])
-
 
         offshore_moving = create_new_dataset(
             ws.get_one(
@@ -293,65 +287,73 @@ class WindTurbines(BaseTransformation):
             power
         )
 
-        # add the new dataset to the database
-        self.database.append(offshore_moving)
 
-        print(offshore_moving["name"], offshore_moving["reference product"])
 
         offshore_shares = get_components_mass_shares("offshore")
 
-        COLUMNS_FIXED = [
-            #"nacelle",
-            #"rotor",
-            #"other",
-            #"transformer + cabinet",
-            "foundation",
-            "tower",
-            "platform",
-            "grid connector",
-        ]
+        COLUMNS = {
+            "fixed": [
+                "foundation",
+                "tower",
+                "platform",
+                "grid connector",
+            ],
+            "moving": [
+                "nacelle",
+                "rotor",
+                "other",
+                "transformer + cabinet",
+            ]
+        }
 
-        COLUMNS_MOVING = [
-            "nacelle",
-            "rotor",
-            "other",
-            "transformer + cabinet",
-        ]
 
-        current_component_masses = get_current_masses_from_dataset(offshore_fixed, offshore_shares, COLUMNS_FIXED, "fixed")
-        print(get_current_masses_from_dataset(offshore_moving, offshore_shares, COLUMNS_MOVING, "moving"))
-        current_component_masses.update(get_current_masses_from_dataset(offshore_moving, offshore_shares, COLUMNS_MOVING, "moving"))
+        current_component_masses = get_current_masses_from_dataset(offshore_fixed, offshore_shares, COLUMNS["fixed"], "fixed")
+        current_component_masses.update(get_current_masses_from_dataset(offshore_moving, offshore_shares, COLUMNS["moving"], "moving"))
         target_component_masses = self.get_target_component_masses("offshore")
-
-        print("current", current_component_masses)
-        print()
-        print("target", target_component_masses)
-        print()
 
         scaling_factors = {
             component: target_component_masses.get(component, 0) / current_component_masses.get(component, 0)
-            for component in COLUMNS_FIXED
+            for component in COLUMNS["fixed"] + COLUMNS["moving"]
         }
 
-        for exc in ws.technosphere(
-            offshore_fixed,
-        ):
-            df_share = offshore_shares.loc[
-                (offshore_shares["activity"] == exc["name"])
-                &(offshore_shares["reference product"] == exc["product"])
-                &(offshore_shares["location"] == exc["location"])
-                &(offshore_shares["part"] == "fixed")
-            ]
+        print("current")
+        print(current_component_masses)
+        print()
+        print("target")
+        print(target_component_masses)
+        print()
+        print("scaling_factors")
+        print(scaling_factors)
 
-            weighted_scaling_factor = 0
 
-            if df_share[COLUMNS_FIXED].sum().sum() > 0:
-                for component in COLUMNS_FIXED:
-                    if df_share[component].values[0] > 0:
-                        weighted_scaling_factor += scaling_factors[component] * df_share[component].values[0]
+        for components_type, offshore_ds in {
+            "moving": offshore_moving,
+            "fixed": offshore_fixed,
+        }.items():
+            for exc in ws.technosphere(
+                offshore_ds,
+            ):
+                df_share = offshore_shares.loc[
+                    (offshore_shares["activity"] == exc["name"])
+                    &(offshore_shares["reference product"] == exc["product"])
+                    &(offshore_shares["location"] == exc["location"])
+                    &(offshore_shares["part"] == components_type)
+                ]
 
-            if weighted_scaling_factor > 0:
-                exc["amount"] *= weighted_scaling_factor
+                weighted_scaling_factor = 0
+
+                if df_share[COLUMNS[components_type]].sum().sum() > 0:
+                    for component in COLUMNS[components_type]:
+                        if df_share[component].values[0] > 0:
+                            weighted_scaling_factor += scaling_factors[component] * df_share[component].values[0]
+
+                if weighted_scaling_factor > 0:
+                    exc["amount"] *= weighted_scaling_factor
+
+        # add the new dataset to the database
+        self.database.append(offshore_fixed)
+        # add the new dataset to the database
+        self.database.append(offshore_moving)
 
 
         results = []
@@ -368,8 +370,6 @@ class WindTurbines(BaseTransformation):
                 lifetime=20
             ))
 
-            print(country)
-
             try:
 
                 electricity_ds = copy.deepcopy(ws.get_one(
@@ -383,14 +383,14 @@ class WindTurbines(BaseTransformation):
                 electricity_ds["reference product"] = f"electricity production, high voltage"
                 electricity_ds["code"] = str(uuid.uuid4().hex)
 
-                # modify the production xchange name
+                # modify the production exchange name
                 for exc in ws.production(electricity_ds):
                     exc["name"] = electricity_ds["name"]
                     exc["product"] = electricity_ds["reference product"]
                     if "input" in exc:
                         del exc["input"]
 
-                # let's remoave the current wind turbine inputs
+                # let's remove the current wind turbine inputs
                 electricity_ds["exchanges"] = [
                     exc for exc in electricity_ds["exchanges"]
                     if exc["unit"] != "unit"
