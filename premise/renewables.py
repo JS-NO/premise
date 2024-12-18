@@ -108,10 +108,10 @@ def get_foundation_mass_from_power(power: int, type: str) -> float:
     Return foundation mass (in tons) based on power and foundation type.
     """
     if type=="onshore":
-        return np.clip(0.0794 * power + 604.51, None, 2500)
+        return np.clip(0.3873 * power + 108.8, None, 3500)
     
     else:
-        return np.clip(0.0794 * power + 604.51, None, 2500)
+        return np.clip(0.0272 * power + 1203.9, None, 2500)
     
 
 def get_tower_mass_from_power(power: int, type: str) -> float:
