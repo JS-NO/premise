@@ -91,14 +91,15 @@ def get_capacity_factors():
 
 def get_power_from_year(year: int, type: str) -> float:
     """
-    Return fleet average power (in kW) of wind tubrine based on type (offshore/onshore) and year.
+    Return fleet average power (in kW) of wind tubrine based on
+    type (offshore/onshore) and year.
     """
 
     if type=="onshore":
-        return np.clip(0.1438 * year - 287.06, None, 8000)
+        return np.clip(0.1438 * year - 287.06, None, 8000) * 1000
     
     else:
-        return np.clip(0.4665 * year - 934.33, None, 20000)
+        return np.clip(0.4665 * year - 934.33, None, 20000) * 1000
     
 
 def get_foundation_mass_from_power(power: int, type: str) -> float:
@@ -276,6 +277,10 @@ class WindTurbines(BaseTransformation):
             power
         )
 
+        print(f"Creating offshore wind turbine datasets for {turbine_type} with power {power} kW")
+        print(offshore_fixed["name"], offshore_fixed["reference product"])
+
+
         offshore_moving = create_new_dataset(
             ws.get_one(
                 self.database,
@@ -284,6 +289,8 @@ class WindTurbines(BaseTransformation):
             ),
             power
         )
+
+        print(offshore_moving["name"], offshore_moving["reference product"])
 
         offshore_shares = get_components_mass_shares("offshore")
 
