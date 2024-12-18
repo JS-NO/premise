@@ -380,7 +380,7 @@ class WindTurbines(BaseTransformation):
 
                 # modify the name of the dataset
                 electricity_ds["name"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
-                electricity_ds["reference product"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
+                electricity_ds["reference product"] = f"electricity production, high voltage"
                 electricity_ds["code"] = str(uuid.uuid4().hex)
 
                 # modify the production xchange name
