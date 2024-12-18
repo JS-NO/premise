@@ -277,6 +277,9 @@ class WindTurbines(BaseTransformation):
             power
         )
 
+        # add the new dataset to the database
+        self.database.append(offshore_fixed)
+
         print(f"Creating offshore wind turbine datasets for {turbine_type} with power {power} kW")
         print(offshore_fixed["name"], offshore_fixed["reference product"])
 
@@ -289,6 +292,9 @@ class WindTurbines(BaseTransformation):
             ),
             power
         )
+
+        # add the new dataset to the database
+        self.database.append(offshore_moving)
 
         print(offshore_moving["name"], offshore_moving["reference product"])
 
@@ -384,15 +390,32 @@ class WindTurbines(BaseTransformation):
                     if "input" in exc:
                         del exc["input"]
 
-                # we replace the inputs of wind turbines (fixed and moving parts) with the new datasets
-                for exc in ws.technosphere(
-                        electricity_ds,
-                    ws.equals("unit", "unit")
+                # let's remoave the current wind turbine inputs
+                electricity_ds["exchanges"] = [
+                    exc for exc in electricity_ds["exchanges"]
+                    if exc["unit"] != "unit"
+                ]
 
-                ):
-                    exc["name"] = exc["name"].replace("1-3MW", f"{'{:.1f}'.format(power/1000)}MW")
-                    exc["product"] = exc["product"].replace("1-3MW", f"{'{:.1f}'.format(power/1000)}MW")
-                    exc["amount"] = 1/production
+                electricity_ds["exchanges"].extend([
+                    {
+                        "amount": 1/production,
+                        "type": "technosphere",
+                        "unit": "unit",
+                        "name": offshore_fixed["name"],
+                        "product": offshore_fixed["reference product"],
+                        "location": offshore_fixed["location"],
+                        "uncertainty type": 0,
+                    },
+                    {
+                        "amount": 1/production,
+                        "type": "technosphere",
+                        "unit": "unit",
+                        "name": offshore_moving["name"],
+                        "product": offshore_moving["reference product"],
+                        "location": offshore_moving["location"],
+                        "uncertainty type": 0,
+                    }
+                ])
 
                 self.database.append(electricity_ds)
 
