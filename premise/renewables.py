@@ -111,7 +111,7 @@ def get_foundation_mass_from_power(power: int, type: str) -> float:
         return np.clip(0.3873 * power + 108.8, None, 3500)
     
     else:
-        return np.clip(0.01327 * power - 28.602, None, 3500)
+        return np.clip(0.1327 * power - 28.602, None, 3500)
     
 
 def get_tower_mass_from_power(power: int, type: str) -> float:
