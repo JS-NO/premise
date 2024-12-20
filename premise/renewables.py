@@ -413,6 +413,11 @@ class WindTurbines(BaseTransformation):
                     if exc["unit"] != "unit"
                 ]
 
+                # we need to scale up the use of oil by the ratio between the new and old rated power
+                for exc in ws.technosphere(electricity_ds):
+                    if "oil" in exc["name"]:
+                        exc["amount"] *= power / (2000 if turbine_type == "offshore" else 800)
+
                 electricity_ds["exchanges"].extend([
                     {
                         "amount": 1/production,
