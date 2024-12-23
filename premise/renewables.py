@@ -108,12 +108,12 @@ def get_foundation_mass_from_power(power: int, type: str) -> float:
     Return foundation mass (in tons) based on power and foundation type.
     """
     if type=="onshore":
-        #return np.clip(0.3873 * power + 108.8, None, 3500) #linear
-        return np.clip((2e-6 * power**2) + (0.3702 * power) + 137.56, None, 3500) #polynomial
+        return np.clip(0.3873 * power + 108.8, None, 3500) #linear
+        #return np.clip((2e-6 * power**2) + (0.3702 * power) + 137.56, None, 3500) #polynomial
     
     else:
-        #return np.clip(0.1327 * power - 28.602, None, 7000) #linear
-        return np.clip((2e-6 * power**2) + (0.0944 * power) + 106.23, None, 7000) #polynomial
+        return np.clip(0.1327 * power - 28.602, None, 7000) #linear
+        #return np.clip((2e-6 * power**2) + (0.0944 * power) + 106.23, None, 7000) #polynomial
     
 
 def get_tower_mass_from_power(power: int, type: str) -> float:
@@ -121,24 +121,24 @@ def get_tower_mass_from_power(power: int, type: str) -> float:
     Return tower mass (in tons) based on power and foundation type.
     """
     if type=="onshore":
-        return np.clip((-4e-6 * power**2) + (0.1105 * power) - 8.5339, None, 1200) #polynomial
-        #return np.clip(0.0903 * power + 3.6486, None, 1200) #linear
+        #return np.clip((-4e-6 * power**2) + (0.1105 * power) - 8.5339, None, 1200) #polynomial
+        return np.clip(0.0903 * power + 3.6486, None, 1200) #linear
     
     else:
-        return np.clip((-4e-6 * power**2) + (0.1201 * power) - 92.119, None, 1500) #polynomial
-        #return np.clip(0.0653 * power + 19.044, None, 1500) #linear
+        #return np.clip((-4e-6 * power**2) + (0.1201 * power) - 92.119, None, 1500) #polynomial
+        return np.clip(0.0653 * power + 19.044, None, 1500) #linear
     
 def get_nacelle_mass_from_power(power: int, type: str) -> float:
     """
     Return nacelle mass (in tons) based on power and foundation type.
     """
     if type=="onshore":
-        return np.clip((2e-6 * power**2) + (0.0291 * power) + 5.8799, None, 400) #polynomial
-        #return np.clip(0.0376 * power - 0.8092, None, 400) #linear
+        #return np.clip((2e-6 * power**2) + (0.0291 * power) + 5.8799, None, 400) #polynomial
+        return np.clip(0.0376 * power - 0.8092, None, 400) #linear
     
     else:
-        return np.clip((-7e-7 * power**2) + (0.0556 * power) - 38.344 , None, 1100) #polynomial
-        #return np.clip(0.0486 * power - 25.633, None, 1100) #linear
+        #return np.clip((-7e-7 * power**2) + (0.0556 * power) - 38.344 , None, 1100) #polynomial
+        return np.clip(0.0486 * power - 25.633, None, 1100) #linear
 
     
 def get_rotor_mass_from_power(power: int, type: str) -> float:
@@ -146,12 +146,12 @@ def get_rotor_mass_from_power(power: int, type: str) -> float:
     Return rotor mass (in tons) based on power and foundation type.
     """
     if type=="onshore":
-        return np.clip((-3e-8 * power**2) + (0.0248 * power) - 2.9359, None, 250)
-        #return np.clip(0.0246 * power - 2.8149, None, 250)
+        #return np.clip((-3e-8 * power**2) + (0.0248 * power) - 2.9359, None, 250)
+        return np.clip(0.0246 * power - 2.8149, None, 250)
     
     else:
-        return np.clip((-4e-7 * power**2) + (0.03 * power) - 16.055, None, 600)
-        #return np.clip(0.0267 * power - 10.29, None, 600)
+        #return np.clip((-4e-7 * power**2) + (0.03 * power) - 16.055, None, 600)
+        return np.clip(0.0267 * power - 10.29, None, 600)
     
 def get_electricity_production(capacity_factor: float, power: int, lifetime: int) -> float:
     """
@@ -263,8 +263,13 @@ class WindTurbines(BaseTransformation):
         tower = get_tower_mass_from_power(power, turbine_type) * 1000 # in kg
         nacelle = get_nacelle_mass_from_power(power, turbine_type) * 1000 # in kg
         rotor = get_rotor_mass_from_power(power, turbine_type) * 1000 # in kg
+        #return grid as a fixed target mass
+        if turbine_type == "offshore":
+            grid_connector = 92000  # in kg
+        else:
+            grid_connector = 19000  # in kg
 
-        return {"foundation": foundation, "tower": tower, "nacelle": nacelle, "rotor": rotor}
+        return {"foundation": foundation, "tower": tower, "nacelle": nacelle, "rotor": rotor, "grid connector": grid_connector}
 
     def create_wind_turbine_datasets(self, turbine_type):
         """
@@ -313,7 +318,7 @@ class WindTurbines(BaseTransformation):
                 "foundation",
                 "tower",
                 "platform",
-                "grid connector",
+                "grid connector"
             ],
             "moving": [
                 "nacelle",
