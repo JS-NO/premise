@@ -318,7 +318,7 @@ class WindTurbines(BaseTransformation):
                 "foundation",
                 "tower",
                 "platform",
-                "grid connector"
+                #"grid connector"
             ],
             "moving": [
                 "nacelle",
@@ -327,6 +327,11 @@ class WindTurbines(BaseTransformation):
                 "transformer + cabinet",
             ]
         }
+        #added because the grid connection is a part of the moving parts for the 800kW onshore wind turbine.
+        if turbine_type == "onshore":
+            COLUMNS["moving"].append("grid connector")
+        elif turbine_type == "offshore":
+            COLUMNS["fixed"].append("grid connector")
 
         current_component_masses = get_current_masses_from_dataset(fixed, components_shares, COLUMNS["fixed"], "fixed")
         current_component_masses.update(get_current_masses_from_dataset(moving, components_shares, COLUMNS["moving"], "moving"))
