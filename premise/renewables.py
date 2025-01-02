@@ -395,7 +395,7 @@ class WindTurbines(BaseTransformation):
                 cf = self.capacity_factors.sel(country=country, type=turbine_type).values
 
             production = int(get_electricity_production(
-                capacity_factor=cf/100,
+                capacity_factor=cf / 100,
                 power=int(power),
                 lifetime=20
             ))
