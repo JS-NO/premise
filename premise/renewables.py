@@ -62,11 +62,8 @@ def _update_renewables(
         index=scenario.get("index"),
     )
 
-    #windturbines.create_wind_turbine_datasets(turbine_type="onshore")
     windturbines.create_wind_turbine_datasets(turbine_type="offshore")
     windturbines.create_wind_turbine_datasets(turbine_type="onshore")
-    #windturbines.get_component_masses(turbine_type="onshore")
-    #windturbines.get_component_masses(turbine_type="offshore")
 
     #windturbines.relink_datasets()
     #scenario["database"] = windturbines.database
@@ -370,6 +367,20 @@ class WindTurbines(BaseTransformation):
                 if weighted_scaling_factor > 0:
                     exc["amount"] *= weighted_scaling_factor
                     exc["comment"] = f"Original amount: {exc['amount'] / weighted_scaling_factor}. Scaling factor: {weighted_scaling_factor}."
+
+
+        # add 0.5 kWh electricity consumption per kg of material in the moving parts
+        # mass of moving parts
+        mass_moving = sum(target_component_masses.get(component, 0) for component in COLUMNS["moving"])
+        # electricity consumption
+        electricity_consumption = 0.5 * mass_moving
+
+        for exc in ws.technosphere(moving):
+            if "electricity" in exc["name"] and exc["unit"] == "kilowatt hour":
+                exc["comment"] = f"Original amount: {exc['amount']}. New amount: {electricity_consumption}. 0.5 kWh per kg of material in the moving parts. Mass of moving parts: {mass_moving} kg."
+                exc["amount"] = electricity_consumption
+
+                print(exc["comment"])
 
         # add the new dataset to the database
         self.database.append(fixed)
