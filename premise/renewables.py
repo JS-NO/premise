@@ -458,7 +458,7 @@ class WindTurbines(BaseTransformation):
                         "product": fixed["reference product"],
                         "location": fixed["location"],
                         "uncertainty type": 0,
-                        "comment": f"Original amount: {1/production}",
+                        "comment": f"Lifetime production {production} kWh",
                     },
                     {
                         "amount": 1/production,
@@ -468,7 +468,7 @@ class WindTurbines(BaseTransformation):
                         "product": moving["reference product"],
                         "location": moving["location"],
                         "uncertainty type": 0,
-                        "comment": f"Original amount: {1/production}",
+                        "comment": f"Lifetime production {production} kWh",
                     }
                 ])
 
