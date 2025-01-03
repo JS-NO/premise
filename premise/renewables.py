@@ -182,6 +182,8 @@ def create_new_dataset(dataset, power):
     new_dataset["reference product"] = new_dataset["reference product"].replace("2MW", f"{'{:.1f}'.format(power/1000)}MW").replace("800kW", f"{'{:.1f}'.format(power/1000)}MW")
     new_dataset["code"] = str(uuid.uuid4().hex)
 
+    new_dataset["comment"] = f"Adapted from {dataset['name']} for a {power} kW wind turbine."
+
     for exc in ws.production(new_dataset):
         exc["name"] = new_dataset["name"]
         exc["product"] = new_dataset["reference product"]
@@ -327,6 +329,7 @@ class WindTurbines(BaseTransformation):
                 "transformer + cabinet",
             ]
         }
+
         #added because the grid connection is a part of the moving parts for the 800kW onshore wind turbine.
         if turbine_type == "onshore":
             COLUMNS["moving"].append("grid connector")
@@ -342,19 +345,6 @@ class WindTurbines(BaseTransformation):
             for component in COLUMNS["fixed"] + COLUMNS["moving"]
                              if current_component_masses.get(component, 1) > 0
         }
-
-        print("current")
-        print(current_component_masses)
-        print()
-
-        print("target")
-        print(target_component_masses)
-        print()
-
-        print("scaling_factors")
-        print(scaling_factors)
-        print()
-
 
         for components_type, offshore_ds in {
             "moving": moving,
@@ -379,6 +369,7 @@ class WindTurbines(BaseTransformation):
 
                 if weighted_scaling_factor > 0:
                     exc["amount"] *= weighted_scaling_factor
+                    exc["comment"] = f"Original amount: {exc['amount'] / weighted_scaling_factor}. Scaling factor: {weighted_scaling_factor}."
 
         # add the new dataset to the database
         self.database.append(fixed)
@@ -416,6 +407,8 @@ class WindTurbines(BaseTransformation):
                 electricity_ds["name"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
                 electricity_ds["reference product"] = f"electricity, high voltage"
                 electricity_ds["code"] = str(uuid.uuid4().hex)
+                electricity_ds["comment"] = (f"Generated from {dataset_name} for a {power} kW wind turbine."
+                                             f"Assumed lifetime: 20 years. Capacity factor: {cf}%.")
 
                 # modify the production exchange name
                 for exc in ws.production(electricity_ds):
@@ -444,6 +437,7 @@ class WindTurbines(BaseTransformation):
                         "product": fixed["reference product"],
                         "location": fixed["location"],
                         "uncertainty type": 0,
+                        "comment": f"Original amount: {1/production}",
                     },
                     {
                         "amount": 1/production,
@@ -453,6 +447,7 @@ class WindTurbines(BaseTransformation):
                         "product": moving["reference product"],
                         "location": moving["location"],
                         "uncertainty type": 0,
+                        "comment": f"Original amount: {1/production}",
                     }
                 ])
 
@@ -460,7 +455,6 @@ class WindTurbines(BaseTransformation):
 
             except:
                 pass
-
 
             results.append([country, cf, turbine_type, production, production/20])
 
