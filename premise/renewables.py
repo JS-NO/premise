@@ -90,17 +90,17 @@ def get_capacity_factors():
     return array
 
 
-def get_power_from_year(year: int, type: str) -> float:
+def get_power_from_year(year: int, type: str) -> int:
     """
     Return fleet average power (in kW) of wind tubrine based on
     type (offshore/onshore) and year.
     """
 
     if type=="onshore":
-        return np.clip(0.1438 * year - 287.06, None, 8000) * 1000
+        return int(np.clip(0.1438 * year - 287.06, None, 8000) * 1000)
     
     else:
-        return np.clip(0.4665 * year - 934.33, None, 20000) * 1000
+        return int(np.clip(0.4665 * year - 934.33, None, 20000) * 1000)
     
 
 def get_foundation_mass_from_power(power: int, type: str) -> float:
@@ -178,8 +178,8 @@ def create_new_dataset(dataset, power):
 
     new_dataset = copy.deepcopy(dataset)
 
-    new_dataset["name"] = new_dataset["name"].replace("2MW", f"{'{:.1f}'.format(power/1000)}MW")
-    new_dataset["reference product"] = new_dataset["reference product"].replace("2MW", f"{'{:.1f}'.format(power/1000)}MW")
+    new_dataset["name"] = new_dataset["name"].replace("2MW", f"{'{:.1f}'.format(power/1000)}MW").replace("800kW", f"{'{:.1f}'.format(power/1000)}MW")
+    new_dataset["reference product"] = new_dataset["reference product"].replace("2MW", f"{'{:.1f}'.format(power/1000)}MW").replace("800kW", f"{'{:.1f}'.format(power/1000)}MW")
     new_dataset["code"] = str(uuid.uuid4().hex)
 
     for exc in ws.production(new_dataset):
@@ -401,7 +401,6 @@ class WindTurbines(BaseTransformation):
             ))
 
             try:
-
                 if turbine_type == "onshore":
                     dataset_name = "electricity production, wind, <1MW turbine, onshore"
                 else:
