@@ -206,7 +206,11 @@ def get_current_masses_from_dataset(dataset, shares, components, components_type
             for component in components:
                 if df_share[component].values[0] > 0:
                     if exc["amount"]>0:
-                        components_masses[component] += (exc["amount"] * df_share[component].values[0])
+                        if "concrete" in exc["name"] and exc["unit"] == "cubic meter":
+                            factor = 2400 #kg/m3
+                        else:
+                            factor = 1
+                        components_masses[component] += (exc["amount"] * df_share[component].values[0] * factor)
 
     return components_masses
 
@@ -343,12 +347,17 @@ class WindTurbines(BaseTransformation):
                              if current_component_masses.get(component, 1) > 0
         }
 
-        for components_type, offshore_ds in {
+        print(turbine_type)
+        print(scaling_factors)
+        print(f" current component masses: {current_component_masses}")
+        print(f" target component masses: {target_component_masses}")
+
+        for components_type, dataset in {
             "moving": moving,
             "fixed": fixed,
         }.items():
             for exc in ws.technosphere(
-                offshore_ds,
+                dataset,
             ):
                 df_share = components_shares.loc[
                     (components_shares["activity"] == exc["name"])
@@ -368,8 +377,11 @@ class WindTurbines(BaseTransformation):
                     exc["amount"] *= weighted_scaling_factor
                     exc["comment"] = f"Original amount: {exc['amount'] / weighted_scaling_factor}. Scaling factor: {weighted_scaling_factor}."
 
+            dataset["comment"] += f" Scaling factors: {scaling_factors}."
 
-        # add 0.5 kWh electricity consumption per kg of material in the moving parts
+
+        # add 0.5 kWh electricity consumption per kg of material
+        # in the moving parts
         # mass of moving parts
         mass_moving = sum(target_component_masses.get(component, 0) for component in COLUMNS["moving"])
         # electricity consumption
@@ -379,8 +391,6 @@ class WindTurbines(BaseTransformation):
             if "electricity" in exc["name"] and exc["unit"] == "kilowatt hour":
                 exc["comment"] = f"Original amount: {exc['amount']}. New amount: {electricity_consumption}. 0.5 kWh per kg of material in the moving parts. Mass of moving parts: {mass_moving} kg."
                 exc["amount"] = electricity_consumption
-
-                print(exc["comment"])
 
         # add the new dataset to the database
         self.database.append(fixed)
