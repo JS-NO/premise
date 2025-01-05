@@ -288,195 +288,207 @@ class WindTurbines(BaseTransformation):
         # we start with offshore wind turbines
         # we first look at the dataset representing the fixed parts
 
-        power = get_power_from_year(self.year, turbine_type)
-
-        if turbine_type == "onshore":
-            dataset_name_to_copy = "wind power plant construction, 800kW, fixed parts"
-        else:
-            dataset_name_to_copy = "wind power plant construction, 2MW, offshore, fixed parts"
-
-        fixed = create_new_dataset(
-            ws.get_one(
-                self.database,
-                ws.equals("name", dataset_name_to_copy),
-                ws.equals("unit", "unit"),
-            ),
-            power
-        )
-
-        if turbine_type == "onshore":
-            dataset_name_to_copy = "wind power plant construction, 800kW, moving parts"
-        else:
-            dataset_name_to_copy = "wind power plant construction, 2MW, offshore, moving parts"
-
-        moving = create_new_dataset(
-            ws.get_one(
-                self.database,
-                ws.equals("name", dataset_name_to_copy),
-                ws.equals("unit", "unit"),
-            ),
-            power
-        )
-
-        components_shares = get_components_mass_shares(turbine_type)
-
-        COLUMNS = {
-            "fixed": [
-                "foundation",
-                "tower",
-                "platform",
-                #"grid connector"
-            ],
-            "moving": [
-                "nacelle",
-                "rotor",
-                "other",
-                "transformer + cabinet",
-            ]
-        }
-
-        #added because the grid connection is a part of the moving parts for the 800kW onshore wind turbine.
-        if turbine_type == "onshore":
-            COLUMNS["moving"].append("grid connector")
-        elif turbine_type == "offshore":
-            COLUMNS["fixed"].append("grid connector")
-
-        current_component_masses = get_current_masses_from_dataset(fixed, components_shares, COLUMNS["fixed"], "fixed")
-        current_component_masses.update(get_current_masses_from_dataset(moving, components_shares, COLUMNS["moving"], "moving"))
-        target_component_masses = self.get_target_component_masses(turbine_type)
-
-        scaling_factors = {
-            component: target_component_masses.get(component, 0) / current_component_masses.get(component, 1)
-            for component in COLUMNS["fixed"] + COLUMNS["moving"]
-                             if current_component_masses.get(component, 1) > 0
-        }
-
-        for components_type, dataset in {
-            "moving": moving,
-            "fixed": fixed,
-        }.items():
-            for exc in ws.technosphere(
-                dataset,
-            ):
-                df_share = components_shares.loc[
-                    (components_shares["activity"] == exc["name"])
-                    &(components_shares["reference product"] == exc["product"])
-                    &(components_shares["location"] == exc["location"])
-                    &(components_shares["part"] == components_type)
-                ]
-
-                weighted_scaling_factor = 0
-
-                if df_share[COLUMNS[components_type]].sum().sum() > 0:
-                    for component in COLUMNS[components_type]:
-                        if df_share[component].values[0] > 0:
-                            weighted_scaling_factor += scaling_factors[component] * df_share[component].values[0]
-
-                if weighted_scaling_factor > 0:
-                    exc["amount"] *= weighted_scaling_factor
-                    exc["comment"] = f"Original amount: {exc['amount'] / weighted_scaling_factor}. Scaling factor: {weighted_scaling_factor}."
-
-            dataset["comment"] += f" Scaling factors: {scaling_factors}."
-
-
-        # add 0.5 kWh electricity consumption per kg of material
-        # in the moving parts
-        # mass of moving parts
-        mass_moving = sum(target_component_masses.get(component, 0) for component in COLUMNS["moving"])
-        # electricity consumption
-        electricity_consumption = 0.5 * mass_moving
-
-        for exc in ws.technosphere(moving):
-            if "electricity" in exc["name"] and exc["unit"] == "kilowatt hour":
-                exc["comment"] = f"Original amount: {exc['amount']}. New amount: {electricity_consumption}. 0.5 kWh per kg of material in the moving parts. Mass of moving parts: {mass_moving} kg."
-                exc["amount"] = electricity_consumption
-
-        # add the new dataset to the database
-        self.database.append(fixed)
-        # add the new dataset to the database
-        self.database.append(moving)
-
+        # power = get_power_from_year(self.year, turbine_type)
 
         results = []
+        for power in range(1000, 20000, 1000):
 
-        for country in self.capacity_factors.coords["country"].values:
-            if np.isnan(self.capacity_factors.sel(country=country, type=turbine_type).values):
-                cf = self.capacity_factors.sel(country=country, type="all").values
+            if turbine_type == "onshore":
+                dataset_name_to_copy = "wind power plant construction, 800kW, fixed parts"
             else:
-                cf = self.capacity_factors.sel(country=country, type=turbine_type).values
+                dataset_name_to_copy = "wind power plant construction, 2MW, offshore, fixed parts"
 
-            production = int(get_electricity_production(
-                capacity_factor=cf / 100,
-                power=int(power),
-                lifetime=20
-            ))
-
-            try:
-                if turbine_type == "onshore":
-                    dataset_name = "electricity production, wind, <1MW turbine, onshore"
-                else:
-                    dataset_name = "electricity production, wind, 1-3MW turbine, offshore"
-
-                electricity_ds = copy.deepcopy(ws.get_one(
+            fixed = create_new_dataset(
+                ws.get_one(
                     self.database,
-                    ws.equals("name", dataset_name),
-                    ws.equals("location", country),
+                    ws.equals("name", dataset_name_to_copy),
+                    ws.equals("unit", "unit"),
+                ),
+                power
+            )
+
+            if turbine_type == "onshore":
+                dataset_name_to_copy = "wind power plant construction, 800kW, moving parts"
+            else:
+                dataset_name_to_copy = "wind power plant construction, 2MW, offshore, moving parts"
+
+            moving = create_new_dataset(
+                ws.get_one(
+                    self.database,
+                    ws.equals("name", dataset_name_to_copy),
+                    ws.equals("unit", "unit"),
+                ),
+                power
+            )
+
+            components_shares = get_components_mass_shares(turbine_type)
+
+            COLUMNS = {
+                "fixed": [
+                    "foundation",
+                    "tower",
+                    "platform",
+                    #"grid connector"
+                ],
+                "moving": [
+                    "nacelle",
+                    "rotor",
+                    "other",
+                    "transformer + cabinet",
+                ]
+            }
+
+            #added because the grid connection is a part of the moving parts for the 800kW onshore wind turbine.
+            if turbine_type == "onshore":
+                COLUMNS["moving"].append("grid connector")
+            elif turbine_type == "offshore":
+                COLUMNS["fixed"].append("grid connector")
+
+            current_component_masses = get_current_masses_from_dataset(fixed, components_shares, COLUMNS["fixed"], "fixed")
+            current_component_masses.update(get_current_masses_from_dataset(moving, components_shares, COLUMNS["moving"], "moving"))
+            target_component_masses = self.get_target_component_masses(turbine_type)
+
+            scaling_factors = {
+                component: target_component_masses.get(component, 0) / current_component_masses.get(component, 1)
+                for component in COLUMNS["fixed"] + COLUMNS["moving"]
+                                 if current_component_masses.get(component, 1) > 0
+            }
+
+            for components_type, dataset in {
+                "moving": moving,
+                "fixed": fixed,
+            }.items():
+                for exc in ws.technosphere(
+                    dataset,
+                ):
+                    df_share = components_shares.loc[
+                        (components_shares["activity"] == exc["name"])
+                        &(components_shares["reference product"] == exc["product"])
+                        &(components_shares["location"] == exc["location"])
+                        &(components_shares["part"] == components_type)
+                    ]
+
+                    weighted_scaling_factor = 0
+
+                    if df_share[COLUMNS[components_type]].sum().sum() > 0:
+                        for component in COLUMNS[components_type]:
+                            if df_share[component].values[0] > 0:
+                                weighted_scaling_factor += scaling_factors[component] * df_share[component].values[0]
+
+                    if weighted_scaling_factor > 0:
+                        exc["amount"] *= weighted_scaling_factor
+
+                        if exc.get("uncertainty type") == 2:
+                            # log normal distribution
+                            exc["loc"] = math.log(exc["amount"])
+
+                        exc["comment"] = f"Original amount: {exc['amount'] / weighted_scaling_factor}. Scaling factor: {weighted_scaling_factor}."
+
+                dataset["comment"] += f" Scaling factors: {scaling_factors}."
+
+
+            # add 0.5 kWh electricity consumption per kg of material
+            # in the moving parts
+            # mass of moving parts
+            mass_moving = sum(target_component_masses.get(component, 0) for component in COLUMNS["moving"])
+            # electricity consumption
+            electricity_consumption = 0.5 * mass_moving
+
+            for exc in ws.technosphere(moving):
+                if "electricity" in exc["name"] and exc["unit"] == "kilowatt hour":
+                    exc["comment"] = f"Original amount: {exc['amount']}. New amount: {electricity_consumption}. 0.5 kWh per kg of material in the moving parts. Mass of moving parts: {mass_moving} kg."
+                    exc["amount"] = electricity_consumption
+
+                    if exc.get("uncertainty type") == 2:
+                        # log normal distribution
+                        exc["loc"] = math.log(exc["amount"])
+
+            # add the new dataset to the database
+            self.database.append(fixed)
+            # add the new dataset to the database
+            self.database.append(moving)
+
+
+
+
+            for country in self.capacity_factors.coords["country"].values:
+                if np.isnan(self.capacity_factors.sel(country=country, type=turbine_type).values):
+                    cf = self.capacity_factors.sel(country=country, type="all").values
+                else:
+                    cf = self.capacity_factors.sel(country=country, type=turbine_type).values
+
+                production = int(get_electricity_production(
+                    capacity_factor=cf / 100,
+                    power=int(power),
+                    lifetime=20
                 ))
 
-                # modify the name of the dataset
-                electricity_ds["name"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
-                electricity_ds["reference product"] = f"electricity, high voltage"
-                electricity_ds["code"] = str(uuid.uuid4().hex)
-                electricity_ds["comment"] = (f"Generated from {dataset_name} for a {power} kW wind turbine."
-                                             f"Assumed lifetime: 20 years. Capacity factor: {cf}%.")
+                try:
+                    if turbine_type == "onshore":
+                        dataset_name = "electricity production, wind, <1MW turbine, onshore"
+                    else:
+                        dataset_name = "electricity production, wind, 1-3MW turbine, offshore"
 
-                # modify the production exchange name
-                for exc in ws.production(electricity_ds):
-                    exc["name"] = electricity_ds["name"]
-                    exc["product"] = electricity_ds["reference product"]
-                    if "input" in exc:
-                        del exc["input"]
+                    electricity_ds = copy.deepcopy(ws.get_one(
+                        self.database,
+                        ws.equals("name", dataset_name),
+                        ws.equals("location", country),
+                    ))
 
-                # let's remove the current wind turbine inputs
-                electricity_ds["exchanges"] = [
-                    exc for exc in electricity_ds["exchanges"]
-                    if exc["unit"] != "unit"
-                ]
+                    # modify the name of the dataset
+                    electricity_ds["name"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
+                    electricity_ds["reference product"] = f"electricity, high voltage"
+                    electricity_ds["code"] = str(uuid.uuid4().hex)
+                    electricity_ds["comment"] = (f"Generated from {dataset_name} for a {power} kW wind turbine."
+                                                 f"Assumed lifetime: 20 years. Capacity factor: {cf}%.")
 
-                # we need to scale up the use of oil by the ratio between the new and old rated power
-                for exc in ws.technosphere(electricity_ds):
-                    if "oil" in exc["name"]:
-                        exc["amount"] *= power / (2000 if turbine_type == "offshore" else 800)
+                    # modify the production exchange name
+                    for exc in ws.production(electricity_ds):
+                        exc["name"] = electricity_ds["name"]
+                        exc["product"] = electricity_ds["reference product"]
+                        if "input" in exc:
+                            del exc["input"]
 
-                electricity_ds["exchanges"].extend([
-                    {
-                        "amount": 1/production,
-                        "type": "technosphere",
-                        "unit": "unit",
-                        "name": fixed["name"],
-                        "product": fixed["reference product"],
-                        "location": fixed["location"],
-                        "uncertainty type": 0,
-                        "comment": f"Lifetime production {production} kWh",
-                    },
-                    {
-                        "amount": 1/production,
-                        "type": "technosphere",
-                        "unit": "unit",
-                        "name": moving["name"],
-                        "product": moving["reference product"],
-                        "location": moving["location"],
-                        "uncertainty type": 0,
-                        "comment": f"Lifetime production {production} kWh",
-                    }
-                ])
+                    # let's remove the current wind turbine inputs
+                    electricity_ds["exchanges"] = [
+                        exc for exc in electricity_ds["exchanges"]
+                        if exc["unit"] != "unit"
+                    ]
 
-                self.database.append(electricity_ds)
+                    # we need to scale up the use of oil by the ratio between the new and old rated power
+                    for exc in ws.technosphere(electricity_ds):
+                        if "oil" in exc["name"]:
+                            exc["amount"] *= power / (2000 if turbine_type == "offshore" else 800)
 
-            except:
-                pass
+                    electricity_ds["exchanges"].extend([
+                        {
+                            "amount": 1/production,
+                            "type": "technosphere",
+                            "unit": "unit",
+                            "name": fixed["name"],
+                            "product": fixed["reference product"],
+                            "location": fixed["location"],
+                            "uncertainty type": 0,
+                            "comment": f"Lifetime production {production} kWh",
+                        },
+                        {
+                            "amount": 1/production,
+                            "type": "technosphere",
+                            "unit": "unit",
+                            "name": moving["name"],
+                            "product": moving["reference product"],
+                            "location": moving["location"],
+                            "uncertainty type": 0,
+                            "comment": f"Lifetime production {production} kWh",
+                        }
+                    ])
 
-            results.append([country, cf, turbine_type, production, production/20])
+                    self.database.append(electricity_ds)
+
+                except:
+                    pass
+
+                results.append([country, cf, turbine_type, production, production/20])
 
         table = prettytable.PrettyTable()
         table.field_names = ["Country", "Capacity factor", "Type", "Lifetime prod [kWh]", "Annual prod [kWh]"]
