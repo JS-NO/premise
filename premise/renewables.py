@@ -119,11 +119,14 @@ def get_tower_mass_from_power(power: int, type: str) -> float:
     """
     if type=="onshore":
         #return np.clip((-4e-6 * power**2) + (0.1105 * power) - 8.5339, None, 1200) #polynomial
-        return np.clip(0.0903 * power + 3.6486, None, 1200) #linear
+        # return np.clip(0.0581 * (power ** 1.0626), None, 1200) #linear
+        return np.clip(0.0903 * power + 3.6486, None, 1200)
     
     else:
         #return np.clip((-4e-6 * power**2) + (0.1201 * power) - 92.119, None, 1500) #polynomial
-        return np.clip(0.0653 * power + 19.044, None, 1500) #linear
+        # return np.clip(0.0653 * power + 19.044, None, 1500) #linear
+        # return np.clip(0.2097 * (power ** 0.8213), None, 1500) #linear
+        return np.clip(0.0653 * power  + 19.044, None, 1500) #linear
     
 def get_nacelle_mass_from_power(power: int, type: str) -> float:
     """
@@ -131,11 +134,12 @@ def get_nacelle_mass_from_power(power: int, type: str) -> float:
     """
     if type=="onshore":
         #return np.clip((2e-6 * power**2) + (0.0291 * power) + 5.8799, None, 400) #polynomial
-        return np.clip(0.0376 * power - 0.8092, None, 400) #linear
+        # return np.clip(0.0376 * power - 0.8092, None, 400) #linear
+        return np.clip(0.0606 * (power ** 0.9278), None, 400) #linear
     
     else:
-        #return np.clip((-7e-7 * power**2) + (0.0556 * power) - 38.344 , None, 1100) #polynomial
-        return np.clip(0.0486 * power - 25.633, None, 1100) #linear
+        return np.clip((-7e-7 * power**2) + (0.0554 * power) - 38.061 , None, 1100) #polynomial
+        # return np.clip(0.0486 * power - 25.633, None, 1100) #linear
 
     
 def get_rotor_mass_from_power(power: int, type: str) -> float:
@@ -144,11 +148,11 @@ def get_rotor_mass_from_power(power: int, type: str) -> float:
     """
     if type=="onshore":
         #return np.clip((-3e-8 * power**2) + (0.0248 * power) - 2.9359, None, 250)
-        return np.clip(0.0246 * power - 2.8149, None, 250)
+        return np.clip(0.0244 * power - 2.3363, None, 250)
     
     else:
         #return np.clip((-4e-7 * power**2) + (0.03 * power) - 16.055, None, 600)
-        return np.clip(0.0267 * power - 10.29, None, 600)
+        return np.clip(0.0281 * power - 14.86, None, 600)
     
 def get_electricity_production(capacity_factor: float, power: int, lifetime: int) -> float:
     """
@@ -346,11 +350,6 @@ class WindTurbines(BaseTransformation):
             for component in COLUMNS["fixed"] + COLUMNS["moving"]
                              if current_component_masses.get(component, 1) > 0
         }
-
-        print(turbine_type)
-        print(scaling_factors)
-        print(f" current component masses: {current_component_masses}")
-        print(f" target component masses: {target_component_masses}")
 
         for components_type, dataset in {
             "moving": moving,
