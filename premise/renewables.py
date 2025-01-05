@@ -11,6 +11,8 @@ import pandas as pd
 import prettytable
 
 import yaml
+from scipy.stats import  truncnorm
+from scipy.optimize import minimize
 
 from .export import biosphere_flows_dictionary
 from .filesystem_constants import VARIABLES_DIR
@@ -66,7 +68,7 @@ def _update_renewables(
     windturbines.create_wind_turbine_datasets(turbine_type="onshore")
 
     #windturbines.relink_datasets()
-    #scenario["database"] = windturbines.database
+    scenario["database"] = windturbines.database
     #scenario["index"] = windturbines.index
     #scenario["cache"] = windturbines.cache
 
@@ -218,6 +220,70 @@ def get_current_masses_from_dataset(dataset, shares, components, components_type
 
     return components_masses
 
+def get_fleet_distribution(power: int) -> dict:
+    """
+    Generate a distribution of wind turbine capacities such that
+    the weighted average equals the fleet's average capacity.
+
+    Parameters:
+    - power (int): Fleet average capacity in kW.
+
+    Returns:
+    - dict: Distribution of turbine capacities (bin centers) with percentages.
+    """
+
+    # Parameters for the log-normal distribution
+    sigma = 0.7  # Standard deviation (controls skewness)
+    min_capacity = 1000  # Minimum capacity (kW)
+    max_capacity = 25000  # Maximum capacity (kW)
+
+    # Define bin edges and centers (round numbers)
+    bin_edges = np.arange(min_capacity, max_capacity + 1000, 1000)
+    bin_centers = bin_edges[:-1]
+
+    # Generate truncated log-normal data
+    mu = np.log(power) - (sigma ** 2 / 2)
+    a, b = (np.log(min_capacity) - mu) / sigma, (np.log(max_capacity) - mu) / sigma
+    n_samples = 100000
+    lognormal_samples = truncnorm.rvs(a, b, loc=mu, scale=sigma, size=n_samples)
+    capacities = np.exp(lognormal_samples)
+
+    # Compute histogram counts
+    counts, _ = np.histogram(capacities, bins=bin_edges)
+
+    # Initial raw distribution
+    raw_distribution = counts / counts.sum()
+
+    # Optimization target: match the weighted average to the target
+    def objective(weights):
+        return np.sum((weights / weights.sum()) * bin_centers) - power
+
+    # Constraint: weights must sum to 1
+    constraints = {"type": "eq", "fun": lambda w: w.sum() - 1}
+
+    # Bounds: weights must be non-negative
+    bounds = [(0, 1) for _ in range(len(bin_centers))]
+
+    # Optimize weights
+    result = minimize(
+        lambda w: abs(objective(w)),  # Minimize the absolute difference
+        x0=raw_distribution,  # Initial guess
+        bounds=bounds,
+        constraints=constraints,
+        method="SLSQP"  # Sequential Least Squares Programming
+    )
+
+    if not result.success:
+        raise ValueError("Optimization failed to converge.")
+
+    # Extract optimized weights
+    optimized_weights = result.x / result.x.sum()
+
+    # Validate the weighted average
+    validated_average = np.sum(optimized_weights * bin_centers)
+
+    # Return the final distribution as a dictionary
+    return {int(center): optimized_weights[i] for i, center in enumerate(bin_centers)}
 
 class WindTurbines(BaseTransformation):
     """
@@ -270,6 +336,7 @@ class WindTurbines(BaseTransformation):
         tower = get_tower_mass_from_power(power, turbine_type) * 1000 # in kg
         nacelle = get_nacelle_mass_from_power(power, turbine_type) * 1000 # in kg
         rotor = get_rotor_mass_from_power(power, turbine_type) * 1000 # in kg
+
         #return grid as a fixed target mass
         if turbine_type == "offshore":
             grid_connector = 92000  # in kg
@@ -291,8 +358,9 @@ class WindTurbines(BaseTransformation):
         # power = get_power_from_year(self.year, turbine_type)
 
         results = []
-        for power in range(1000, 20000, 1000):
+        created_datasets = []
 
+        for power in range(1000, 26000, 1000):
             if turbine_type == "onshore":
                 dataset_name_to_copy = "wind power plant construction, 800kW, fixed parts"
             else:
@@ -354,6 +422,8 @@ class WindTurbines(BaseTransformation):
                                  if current_component_masses.get(component, 1) > 0
             }
 
+
+
             for components_type, dataset in {
                 "moving": moving,
                 "fixed": fixed,
@@ -386,7 +456,6 @@ class WindTurbines(BaseTransformation):
 
                 dataset["comment"] += f" Scaling factors: {scaling_factors}."
 
-
             # add 0.5 kWh electricity consumption per kg of material
             # in the moving parts
             # mass of moving parts
@@ -407,7 +476,6 @@ class WindTurbines(BaseTransformation):
             self.database.append(fixed)
             # add the new dataset to the database
             self.database.append(moving)
-
 
 
 
@@ -485,16 +553,78 @@ class WindTurbines(BaseTransformation):
 
                     self.database.append(electricity_ds)
 
+                    created_datasets.append(
+                        (country, power)
+                    )
+
                 except:
                     pass
 
                 results.append([country, cf, turbine_type, production, production/20])
 
-        table = prettytable.PrettyTable()
-        table.field_names = ["Country", "Capacity factor", "Type", "Lifetime prod [kWh]", "Annual prod [kWh]"]
-        for result in results:
-            table.add_row(result)
-        print(table)
+        fleet_average_power = get_power_from_year(self.year, turbine_type)
+        # create a capacity distribution base don the fleet average capacity
+        fleet_distribution = get_fleet_distribution(
+            fleet_average_power
+        )
+
+        # create, for each country, a fleet average dataset for the wind turbines
+        # considering the fleet capacity distribution
+
+        for country in self.capacity_factors.coords["country"].values:
+            if len([x for x in created_datasets if x[0] == country]) == 0:
+                # no wind turbine dataset created for this country
+                # e.g., offshore market for landlocked countries
+                continue
+
+            new_market_dataset = {
+                "name": f"market for electricity, from wind turbine, {turbine_type}",
+                "location": country,
+                "reference product": f"electricity, high voltage",
+                "unit": "kilowatt hour",
+                "code": str(uuid.uuid4().hex),
+                "comment": f"Assumed fleet average power: {fleet_average_power} kW.",
+                "exchanges": [
+                    {
+                        "amount": fleet_distribution[p],
+                        "type": "technosphere",
+                        "unit": "kilowatt hour",
+                        "name": f"electricity production, wind, {'{:.1f}'.format(p/1000)}MW turbine, {turbine_type}",
+                        "product": f"electricity, high voltage",
+                        "location": country,
+                        "uncertainty type": 0,
+                    }
+                    for p in fleet_distribution
+                    if (country, p) in created_datasets
+                ],
+            }
+
+            # normalize the exchanges
+            total = sum([exc["amount"] for exc in new_market_dataset["exchanges"]])
+            for exc in new_market_dataset["exchanges"]:
+                exc["amount"] /= total
+
+
+            # add production exchange
+            new_market_dataset["exchanges"].extend([
+                {
+                    "amount": 1,
+                    "type": "production",
+                    "unit": "kilowatt hour",
+                    "name": new_market_dataset["name"],
+                    "product": new_market_dataset["reference product"],
+                    "location": new_market_dataset["location"],
+                    "uncertainty type": 0,
+                }
+            ])
+
+            self.database.append(new_market_dataset)
+
+        #table = prettytable.PrettyTable()
+        #table.field_names = ["Country", "Capacity factor", "Type", "Lifetime prod [kWh]", "Annual prod [kWh]"]
+        #for result in results:
+        #    table.add_row(result)
+        #print(table)
 
 
     def write_log(self, dataset, status="created"):
@@ -505,19 +635,4 @@ class WindTurbines(BaseTransformation):
         logger.info(
             f"{status}|{self.model}|{self.scenario}|{self.year}|"
             f"{dataset['name']}|{dataset['location']}|"
-            f"{dataset.get('log parameters', {}).get('old efficiency', '')}|"
-            f"{dataset.get('log parameters', {}).get('new efficiency', '')}|"
-            f"{dataset.get('log parameters', {}).get('transformation loss', '')}|"
-            f"{dataset.get('log parameters', {}).get('distribution loss', '')}|"
-            f"{dataset.get('log parameters', {}).get('renewable share', '')}|"
-            f"{dataset.get('log parameters', {}).get('ecoinvent original efficiency', '')}|"
-            f"{dataset.get('log parameters', {}).get('Oberschelp et al. efficiency', '')}|"
-            f"{dataset.get('log parameters', {}).get('efficiency change', '')}|"
-            f"{dataset.get('log parameters', {}).get('CO2 scaling factor', '')}|"
-            f"{dataset.get('log parameters', {}).get('SO2 scaling factor', '')}|"
-            f"{dataset.get('log parameters', {}).get('CH4 scaling factor', '')}|"
-            f"{dataset.get('log parameters', {}).get('NOx scaling factor', '')}|"
-            f"{dataset.get('log parameters', {}).get('PM <2.5 scaling factor', '')}|"
-            f"{dataset.get('log parameters', {}).get('PM 10 - 2.5 scaling factor', '')}|"
-            f"{dataset.get('log parameters', {}).get('PM > 10 scaling factor', '')}"
         )
