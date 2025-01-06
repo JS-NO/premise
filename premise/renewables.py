@@ -9,6 +9,7 @@ from functools import lru_cache
 import math
 import pandas as pd
 import prettytable
+import wurst
 
 import yaml
 import csv
@@ -76,18 +77,13 @@ def _update_renewables(
     
     return scenario
 
-def get_capacity_factors():
+def get_capacity_factors() -> pd.DataFrame:
 
-    dataframe = pd.read_csv(
-        CAPACITY_FACTORS_WIND, sep=get_delimiter(filepath=CAPACITY_FACTORS_WIND)
+    return pd.read_csv(
+        CAPACITY_FACTORS_WIND,
+        sep=get_delimiter(filepath=CAPACITY_FACTORS_WIND),
+        keep_default_na=False, na_values=['']
     )
-
-    # Convert the DataFrame to an xarray Dataset
-    array = dataframe.set_index(["country", "type", ])[
-        "capacity factor"
-    ].to_xarray()
-
-    return array
 
 
 def get_power_from_year(year: int, type: str) -> int:
@@ -221,7 +217,7 @@ def get_current_masses_from_dataset(dataset, shares, components, components_type
 
     return components_masses
 
-def get_fleet_distribution(power: int) -> dict:
+def get_fleet_distribution(power: int, turbine_type: str) -> dict:
     """
     Generate a distribution of wind turbine capacities such that
     the weighted average equals the fleet's average capacity.
@@ -236,7 +232,7 @@ def get_fleet_distribution(power: int) -> dict:
     # Parameters for the log-normal distribution
     sigma = 0.7  # Standard deviation (controls skewness)
     min_capacity = 1000  # Minimum capacity (kW)
-    max_capacity = 25000  # Maximum capacity (kW)
+    max_capacity = 10000 if turbine_type == "onshore" else 22000  # Maximum capacity (kW)
 
     # Define bin edges and centers (round numbers)
     bin_edges = np.arange(min_capacity, max_capacity + 1000, 1000)
@@ -384,7 +380,9 @@ class WindTurbines(BaseTransformation):
         results = []
         created_datasets = []
 
-        for power in range(1000, 26000, 1000):
+        max_power = 10000 if turbine_type == "onshore" else 22000
+
+        for power in range(1000, max_power + 1000, 1000):
             if turbine_type == "onshore":
                 dataset_name_to_copy = "wind power plant construction, 800kW, fixed parts"
             else:
@@ -446,8 +444,6 @@ class WindTurbines(BaseTransformation):
                                  if current_component_masses.get(component, 1) > 0
             }
 
-
-
             for components_type, dataset in {
                 "moving": moving,
                 "fixed": fixed,
@@ -501,95 +497,105 @@ class WindTurbines(BaseTransformation):
             # add the new dataset to the database
             self.database.append(moving)
 
+            for i, row in self.capacity_factors.iterrows():
+                country = row["country"]
+                cf = row[turbine_type]
 
-
-            for country in self.capacity_factors.coords["country"].values:
-                if np.isnan(self.capacity_factors.sel(country=country, type=turbine_type).values):
-                    cf = self.capacity_factors.sel(country=country, type="all").values
-                else:
-                    cf = self.capacity_factors.sel(country=country, type=turbine_type).values
+                # check that cf is not NaN
+                if np.isnan(cf):
+                    continue
 
                 production = int(get_electricity_production(
-                    capacity_factor=cf / 100,
+                    capacity_factor=cf,
                     power=int(power),
                     lifetime=20
                 ))
 
-                try:
-                    if turbine_type == "onshore":
-                        dataset_name = "electricity production, wind, <1MW turbine, onshore"
-                    else:
-                        dataset_name = "electricity production, wind, 1-3MW turbine, offshore"
+                if turbine_type == "onshore":
+                    dataset_name = "electricity production, wind, <1MW turbine, onshore"
+                else:
+                    dataset_name = "electricity production, wind, 1-3MW turbine, offshore"
 
+                try:
                     electricity_ds = copy.deepcopy(ws.get_one(
                         self.database,
                         ws.equals("name", dataset_name),
                         ws.equals("location", country),
                     ))
+                except ws.NoResults:
+                    # fetch a Swiss dataset if we don't have one for the country
+                    electricity_ds = copy.deepcopy(ws.get_one(
+                        self.database,
+                        ws.equals("name", dataset_name),
+                        ws.equals("location", "DE"),
+                    ))
+                    electricity_ds = wurst.copy_to_new_location(electricity_ds, country)
 
-                    # modify the name of the dataset
-                    electricity_ds["name"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
-                    electricity_ds["reference product"] = f"electricity, high voltage"
-                    electricity_ds["code"] = str(uuid.uuid4().hex)
-                    electricity_ds["comment"] = (f"Generated from {dataset_name} for a {power} kW wind turbine."
-                                                 f"Assumed lifetime: 20 years. Capacity factor: {cf}%.")
+                # modify the name of the dataset
+                electricity_ds["name"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
+                electricity_ds["reference product"] = f"electricity, high voltage"
+                electricity_ds["code"] = str(uuid.uuid4().hex)
+                electricity_ds["comment"] = (f"Generated from {dataset_name} for a {power} kW wind turbine."
+                                             f"Assumed lifetime: 20 years. Capacity factor: {cf}%.")
 
-                    # modify the production exchange name
-                    for exc in ws.production(electricity_ds):
-                        exc["name"] = electricity_ds["name"]
-                        exc["product"] = electricity_ds["reference product"]
-                        if "input" in exc:
-                            del exc["input"]
+                # modify the production exchange name
+                for exc in ws.production(electricity_ds):
+                    exc["name"] = electricity_ds["name"]
+                    exc["product"] = electricity_ds["reference product"]
+                    if "input" in exc:
+                        del exc["input"]
 
-                    # let's remove the current wind turbine inputs
-                    electricity_ds["exchanges"] = [
-                        exc for exc in electricity_ds["exchanges"]
-                        if exc["unit"] != "unit"
-                    ]
+                # let's remove the current wind turbine inputs
+                electricity_ds["exchanges"] = [
+                    exc for exc in electricity_ds["exchanges"]
+                    if exc["unit"] != "unit"
+                ]
 
-                    # we need to scale up the use of oil by the ratio between the new and old rated power
-                    for exc in ws.technosphere(electricity_ds):
-                        if "oil" in exc["name"]:
-                            exc["amount"] *= power / (2000 if turbine_type == "offshore" else 800)
+                # we need to scale up the use of oil by the ratio between the new and old rated power
+                for exc in ws.technosphere(electricity_ds):
+                    if "oil" in exc["name"]:
+                        exc["amount"] *= power / (2000 if turbine_type == "offshore" else 800)
 
-                    electricity_ds["exchanges"].extend([
-                        {
-                            "amount": 1/production,
-                            "type": "technosphere",
-                            "unit": "unit",
-                            "name": fixed["name"],
-                            "product": fixed["reference product"],
-                            "location": fixed["location"],
-                            "uncertainty type": 0,
-                            "comment": f"Lifetime production {production} kWh",
-                        },
-                        {
-                            "amount": 1/production,
-                            "type": "technosphere",
-                            "unit": "unit",
-                            "name": moving["name"],
-                            "product": moving["reference product"],
-                            "location": moving["location"],
-                            "uncertainty type": 0,
-                            "comment": f"Lifetime production {production} kWh",
-                        }
-                    ])
+                electricity_ds["exchanges"].extend([
+                    {
+                        "amount": 1/production,
+                        "type": "technosphere",
+                        "unit": "unit",
+                        "name": fixed["name"],
+                        "product": fixed["reference product"],
+                        "location": fixed["location"],
+                        "uncertainty type": 0,
+                        "comment": f"Lifetime production {production} kWh",
+                    },
+                    {
+                        "amount": 1/production,
+                        "type": "technosphere",
+                        "unit": "unit",
+                        "name": moving["name"],
+                        "product": moving["reference product"],
+                        "location": moving["location"],
+                        "uncertainty type": 0,
+                        "comment": f"Lifetime production {production} kWh",
+                    }
+                ])
 
-                    self.database.append(electricity_ds)
+                self.database.append(electricity_ds)
 
-                    created_datasets.append(
-                        (country, power)
-                    )
-
-                except:
-                    pass
+                created_datasets.append(
+                    (country, power)
+                )
 
                 results.append([country, cf, turbine_type, production, production/20])
 
         fleet_average_power = get_power_from_year(self.year, turbine_type)
+        fleet_average_power = np.clip(
+            fleet_average_power,
+            0,
+            max_power
+        )
         # create a capacity distribution base don the fleet average capacity
         fleet_distribution = get_fleet_distribution(
-            fleet_average_power
+            fleet_average_power, turbine_type
         )
 
         # create, for each country, a fleet average dataset for the wind turbines
@@ -597,14 +603,14 @@ class WindTurbines(BaseTransformation):
 
         wind_power_gen = get_wind_power_generation()
 
-        for country in self.capacity_factors.coords["country"].values:
+        for country in self.capacity_factors.loc[:, "country"].unique():
             if len([x for x in created_datasets if x[0] == country]) == 0:
                 # no wind turbine dataset created for this country
                 # e.g., offshore market for landlocked countries
                 continue
 
             new_market_dataset = {
-                "name": f"market for electricity, from wind turbine, {turbine_type}",
+                "name": f"electricity production, wind, {turbine_type}",
                 "location": country,
                 "reference product": f"electricity, high voltage",
                 "unit": "kilowatt hour",
