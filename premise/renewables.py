@@ -69,10 +69,9 @@ def _update_renewables(
     windturbines.create_wind_turbine_datasets(turbine_type="offshore")
     windturbines.create_wind_turbine_datasets(turbine_type="onshore")
 
-    #windturbines.relink_datasets()
     scenario["database"] = windturbines.database
-    #scenario["index"] = windturbines.index
-    #scenario["cache"] = windturbines.cache
+    scenario["index"] = windturbines.index
+    scenario["cache"] = windturbines.cache
 
     
     return scenario
@@ -580,6 +579,7 @@ class WindTurbines(BaseTransformation):
                 ])
 
                 self.database.append(electricity_ds)
+                self.add_to_index(electricity_ds)
 
                 created_datasets.append(
                     (country, power)
