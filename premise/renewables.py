@@ -11,6 +11,7 @@ import pandas as pd
 import prettytable
 
 import yaml
+import csv
 from scipy.stats import  truncnorm
 from scipy.optimize import minimize
 
@@ -284,6 +285,29 @@ def get_fleet_distribution(power: int) -> dict:
 
     # Return the final distribution as a dictionary
     return {int(center): optimized_weights[i] for i, center in enumerate(bin_centers)}
+
+def get_wind_power_generation():
+    """
+    Return wind power generation by country and technology.
+    Data from https://pxweb.irena.org/pxweb/en/IRENASTAT
+    """
+
+    filepath = DATA_DIR / "renewables" / "wind_power_generation_by_country.csv"
+    wind_power_generation = {}
+
+    with open(filepath, "r") as f:
+        reader = csv.DictReader(f)
+        # skip header
+        next(reader)
+
+        for row in reader:
+
+            if row["country code"] not in wind_power_generation:
+                wind_power_generation[row["country code"]] = {}
+
+            wind_power_generation[row["country code"]][row["Technology"]] = float(row["generation (GWh)"]) * 1e6
+
+    return wind_power_generation
 
 class WindTurbines(BaseTransformation):
     """
@@ -571,6 +595,8 @@ class WindTurbines(BaseTransformation):
         # create, for each country, a fleet average dataset for the wind turbines
         # considering the fleet capacity distribution
 
+        wind_power_gen = get_wind_power_generation()
+
         for country in self.capacity_factors.coords["country"].values:
             if len([x for x in created_datasets if x[0] == country]) == 0:
                 # no wind turbine dataset created for this country
@@ -604,7 +630,6 @@ class WindTurbines(BaseTransformation):
             for exc in new_market_dataset["exchanges"]:
                 exc["amount"] /= total
 
-
             # add production exchange
             new_market_dataset["exchanges"].extend([
                 {
@@ -615,16 +640,11 @@ class WindTurbines(BaseTransformation):
                     "product": new_market_dataset["reference product"],
                     "location": new_market_dataset["location"],
                     "uncertainty type": 0,
+                    "production volume": wind_power_gen.get(country, {}).get(turbine_type, 0),
                 }
             ])
 
             self.database.append(new_market_dataset)
-
-        #table = prettytable.PrettyTable()
-        #table.field_names = ["Country", "Capacity factor", "Type", "Lifetime prod [kWh]", "Annual prod [kWh]"]
-        #for result in results:
-        #    table.add_row(result)
-        #print(table)
 
 
     def write_log(self, dataset, status="created"):
