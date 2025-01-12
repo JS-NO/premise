@@ -348,9 +348,8 @@ class WindTurbines(BaseTransformation):
 
         self.capacity_factors = get_capacity_factors()
 
-    def get_target_component_masses(self, turbine_type) -> Dict[str, float]:
+    def get_target_component_masses(self, turbine_type: str, power: int) -> Dict[str, float]:
 
-        power = get_power_from_year(self.year, turbine_type) # in kW
         foundation = get_foundation_mass_from_power(power, turbine_type) * 1000 # in kg
         tower = get_tower_mass_from_power(power, turbine_type) * 1000 # in kg
         nacelle = get_nacelle_mass_from_power(power, turbine_type) * 1000 # in kg
@@ -435,13 +434,15 @@ class WindTurbines(BaseTransformation):
 
             current_component_masses = get_current_masses_from_dataset(fixed, components_shares, COLUMNS["fixed"], "fixed")
             current_component_masses.update(get_current_masses_from_dataset(moving, components_shares, COLUMNS["moving"], "moving"))
-            target_component_masses = self.get_target_component_masses(turbine_type)
+            target_component_masses = self.get_target_component_masses(turbine_type, power)
 
             scaling_factors = {
                 component: target_component_masses.get(component, 0) / current_component_masses.get(component, 1)
                 for component in COLUMNS["fixed"] + COLUMNS["moving"]
                                  if current_component_masses.get(component, 1) > 0
             }
+
+            print(power, scaling_factors)
 
             for components_type, dataset in {
                 "moving": moving,
