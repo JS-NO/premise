@@ -276,7 +276,7 @@ def get_fleet_distribution(power: int, turbine_type: str) -> dict:
     optimized_weights = result.x / result.x.sum()
 
     # Validate the weighted average
-    validated_average = np.sum(optimized_weights * bin_centers)
+    assert np.isclose(np.sum(optimized_weights * bin_centers), power, rtol=1e-3)
 
     # Return the final distribution as a dictionary
     return {int(center): optimized_weights[i] for i, center in enumerate(bin_centers)}
@@ -377,6 +377,7 @@ class WindTurbines(BaseTransformation):
 
         results = []
         created_datasets = []
+        summary_scaling_factors = []
 
         max_power = 10000 if turbine_type == "onshore" else 22000
 
@@ -442,7 +443,9 @@ class WindTurbines(BaseTransformation):
                                  if current_component_masses.get(component, 1) > 0
             }
 
-            print(power, scaling_factors)
+            for key, val in scaling_factors.items():
+                if (turbine_type, power, key, val) not in summary_scaling_factors:
+                    summary_scaling_factors.append((turbine_type, power, key, val))
 
             for components_type, dataset in {
                 "moving": moving,
@@ -551,10 +554,11 @@ class WindTurbines(BaseTransformation):
                     if exc["unit"] != "unit"
                 ]
 
-                # we need to scale up the use of oil by the ratio between the new and old rated power
-                for exc in ws.technosphere(electricity_ds):
-                    if "oil" in exc["name"]:
-                        exc["amount"] *= power / (2000 if turbine_type == "offshore" else 800)
+                # we need to scale up the use of oil
+                # by the ratio between the new and old rated power
+                #for exc in ws.technosphere(electricity_ds):
+                #    if "oil" in exc["name"]:
+                #        exc["amount"] *= power / (2000 if turbine_type == "offshore" else 800)
 
                 electricity_ds["exchanges"].extend([
                     {
@@ -587,6 +591,14 @@ class WindTurbines(BaseTransformation):
                 )
 
                 results.append([country, cf, turbine_type, production, production/20])
+
+        # pretty-table of summary scaling factors
+        x = prettytable.PrettyTable()
+        x.field_names = ["Turbine type", "Power (kW)", "Component", "Scaling factor"]
+        for row in summary_scaling_factors:
+            x.add_row(row)
+        print(x)
+        print()
 
         fleet_average_power = get_power_from_year(self.year, turbine_type)
         fleet_average_power = np.clip(
