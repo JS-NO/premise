@@ -537,6 +537,7 @@ class BaseInventoryImport:
             "Sm3",
             "standard cubic meter",
             "hour",
+            "megavolt-ampere"
         ]
 
         for dataset in self.import_db.data:

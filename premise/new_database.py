@@ -185,6 +185,7 @@ FILEPATH_RAIL_FREIGHT = INVENTORY_DIR / "lci-rail-freight.xlsx"
 FILEPATH_PV_GAAS = INVENTORY_DIR / "lci-PV-GaAs.xlsx"
 FILEPATH_PV_PEROVSKITE = INVENTORY_DIR / "lci-PV-perovskite.xlsx"
 FILEPATH_BATTERY_CAPACITY = INVENTORY_DIR / "lci-battery-capacity.xlsx"
+FILEPATH_WINDTURBINES = INVENTORY_DIR / "lci-wind-turbines.xlsx"
 
 config = load_constants()
 
@@ -793,6 +794,7 @@ class NewDatabase:
             (FILEPATH_RAIL_FREIGHT, "3.9"),
             (FILEPATH_PV_GAAS, "3.10"),
             (FILEPATH_PV_PEROVSKITE, "3.10"),
+            (FILEPATH_WINDTURBINES, "3.10"),
         ]
         for filepath in filepaths:
             # make an exception for FILEPATH_OIL_GAS_INVENTORIES
