@@ -42,6 +42,8 @@ from .filesystem_constants import DATA_DIR
 from .validation import ElectricityValidation
 
 CAPACITY_FACTORS_WIND = DATA_DIR / "renewables" / "wind_capacity_factors.csv"
+STEEL_DENSITY = 8000  # kg/m3
+COPPER_DENSITY = 8960  # kg/m3
 
 logger = create_logger("electricity")
 
@@ -96,45 +98,250 @@ def get_power_from_year(year: int, type: str) -> int:
     
     else:
         return int(np.clip(0.4665 * year - 934.33, None, 20000) * 1000)
-    
+
+
+def set_onshore_cable_requirements(
+    power,
+    tower_height,
+    distance_m=550,
+    voltage_kv=33,
+    power_factor=0.95,
+    resistivity_copper=1.68e-8,
+    max_voltage_drop_percent=3,
+):
+    """
+    Calculate the required cross-sectional area of a copper cable for a wind turbine connection.
+
+    :param power: Power output of the wind turbine in MW
+    :param distance_m: Distance from the wind turbine to the transformer in meters
+    :param voltage_kv: Voltage of the cable in kV
+    :param power_factor: Power factor of the wind turbine
+    :param resistivity_copper: Resistivity of copper in ohm-meters
+    :param max_voltage_drop_percent: Maximum allowable voltage drop as a percentage of the voltage
+    :return: Copper mass in kg
+
+    """
+    # Convert input parameters to standard units
+    voltage_v = voltage_kv * 1e3  # Convert kV to V
+    max_voltage_drop = (
+        max_voltage_drop_percent / 100
+    ) * voltage_v  # Maximum voltage drop in volts
+
+    # Calculate current (I) using the formula: I = P / (sqrt(3) * V * PF)
+    current_a = (power * 1000) / (3**0.5 * voltage_v * power_factor)
+
+    # Calculate the total cable length (round trip)
+    total_length_m = 2 * distance_m
+
+    # Calculate the required resistance per meter to stay within the voltage drop limit
+    max_resistance_per_meter = max_voltage_drop / (current_a * total_length_m)
+
+    # Calculate the required cross-sectional area using R = rho / A
+    cross_section_area_m2 = resistivity_copper / max_resistance_per_meter
+
+    # Convert cross-sectional area to mm²
+    cross_section_area_mm2 = cross_section_area_m2 * 1e6
+
+    copper_mass = cross_section_area_mm2 * total_length_m * 1e-6 * COPPER_DENSITY
+
+    # Also, add the cable inside the wind turbine, which has a 640 mm2 cross-section
+    copper_mass += 640 * 1e-6 * tower_height * COPPER_DENSITY
+
+    return copper_mass
+
+def set_offshore_cable_requirements(
+    power: int,
+    cross_section: float,
+    dist_transfo: float,
+    dist_coast: float,
+    park_size: int,
+) -> Tuple[float, float]:
+    """
+    Return the required cable mass as well as the energy needed to lay down the cable.
+    :param power: rotor power output (in kW)
+    :param cross_section: cable cross-section (in mm2)
+    :param dist_transfo: distance to transformer (in m)
+    :param dist_coast: distance to coastline (in m)
+    :param park_size:
+    :return:
+    """
+
+    m_copper = (cross_section * 1e-6 * dist_transfo) * COPPER_DENSITY
+
+    # 450 l diesel/hour for the ship that lays the cable at sea bottom
+    # 39 MJ/liter, 15 km/h as speed of laying the cable
+    energy_cable_laying_ship = 450 * 39 / 15 * dist_transfo
+
+    # Cross-section calculated based on the farm cumulated power,
+    # and the transport capacity of the Nexans cables @ 150kV
+    # if the cumulated power of the park cannot be transported @ 33kV
+
+    # Test if the cumulated power of the wind farm is inferior to 30 MW,
+    # If so, we use 33 kV cables.
+
+    cross_section_ = np.where(
+        power * park_size <= 30e3,
+        np.interp(
+            power * park_size,
+            np.array([352, 399, 446, 502, 581, 652, 726, 811, 904, 993]) * 33,
+            np.array([95, 120, 150, 185, 240, 300, 400, 500, 630, 800]),
+        ),
+        np.interp(
+            power * park_size,
+            np.array([710, 815, 925, 1045, 1160, 1335, 1425, 1560]) * 150,
+            np.array([400, 500, 630, 800, 1000, 1200, 1600, 2000]),
+        ),
+    )
+
+    m_copper += (
+        cross_section_ * 1e-6 * (dist_coast / park_size)
+    ) * COPPER_DENSITY
+
+    # 450 l diesel/hour for the ship that lays the cable at sea bottom
+    # 39 MJ/liter, 15 km/h as speed of laying the cable
+    energy_cable_laying_ship += 450 * 39 / 15 * dist_coast / park_size
+
+    return m_copper, energy_cable_laying_ship * 0.5
+
+def get_pile_mass(power: int, pile_height: float) -> float:
+    """
+    Return the mass of the steel pile based on the power output of the rotor and the height of the pile.
+    :param power: power output (in kW) of the rotor
+    :param pile_height: height (in m) of the pile
+    :return: mass of the steel pile (in kg)
+    """
+
+    # The following lists store data on the relationship
+    # between the power output of the rotor and the diameter of the pile.
+    # diameters, in meters
+    diameter_x = [5, 5.5, 5.75, 6.75, 7.75]
+    # kW
+    power_y = [3000, 3600, 4000, 8000, 10000]
+
+    # Use polynomial regression to find the function that best fits the data.
+    # This function relates the diameter of the pile with the power output of the rotor.
+    fit_diameter = np.polyfit(power_y, diameter_x, 1)
+    f_fit_diameter = np.poly1d(fit_diameter)
+
+    # Calculate the outer diameter of the pile based on the power output of the rotor.
+    outer_diameter = f_fit_diameter(power)
+
+    # Calculate the cross-section area of the pile based on the outer diameter.
+    outer_area = (np.pi / 4) * (outer_diameter**2)
+
+    # Calculate the volume of the pile based on the outer area and the pile height.
+    outer_volume = outer_area * pile_height
+
+    # Calculate the inner diameter of the pile based on the power output of the rotor and the thickness of the pile.
+    inner_diameter = outer_diameter
+    pile_thickness = np.interp(
+        power,
+        [2000, 3000, 3600, 4000, 8000, 10000],
+        [0.07, 0.10, 0.13, 0.16, 0.19, 0.22],
+    )
+    inner_diameter -= 2 * pile_thickness
+
+    # Calculate the cross-section area of the inner part of the pile.
+    inner_area = (np.pi / 4) * (inner_diameter**2)
+
+    # Calculate the volume of the inner part of the pile based on the inner area and the pile height.
+    inner_volume = inner_area * pile_height
+
+    # Calculate the volume of steel used in the pile by subtracting the inner volume from the outer volume.
+    volume_steel = outer_volume - inner_volume
+
+    # Calculate the weight of the steel used in the pile based on its volume and density.
+    weight_steel = STEEL_DENSITY * volume_steel
+
+    # Return the weight of the steel pile.
+    return weight_steel
+
+
+def penetration_depth_fit() -> np.poly1d:
+    """
+    Return a penetration depth fit model of the steel pile of the offshore wind turbine.
+    :return:
+    """
+    # meters
+    depth = [22.5, 22.5, 23.5, 26, 29.5]
+    # kW
+    power = [3000, 3600, 4000, 8000, 10000]
+    fit_penetration = np.polyfit(power, depth, 1)
+    f_fit_penetration = np.poly1d(fit_penetration)
+    return f_fit_penetration
+
+
+def get_pile_height(power: int, sea_depth: float) -> float:
+    """
+    Returns undersea pile height (m) from rated power output (kW), penetration depth and sea depeth.
+    :param power: power output (kW)
+    :param sea_depth: sea depth (m)
+    :return: pile height (m)
+    """
+    fit_penetration_depth = penetration_depth_fit()
+    return 9 + fit_penetration_depth(power) + sea_depth
+
+
+def get_transition_height() -> np.poly1d:
+    """
+    Returns a fitting model for the height of
+    transition piece (in m), based on pile height (in m).
+    :return:
+    """
+    pile_length = [35, 50, 65, 70, 80]
+    transition_length = [15, 20, 24, 30, 31]
+    fit_transition_length = np.polyfit(pile_length, transition_length, 1)
+    return np.poly1d(fit_transition_length)
+
+
+def get_transition_mass(transition_length: float) -> float:
+    """
+    Returns the mass of transition piece (in kg).
+    :return:
+    """
+    transition_lengths = [15, 20, 24, 30]
+    transition_weight = [150, 200, 260, 370]
+    fit_transition_weight = np.polyfit(transition_lengths, transition_weight, 1)
+
+    return np.poly1d(fit_transition_weight)(transition_length) * 1000
 
 def get_foundation_mass_from_power(power: int, type: str) -> float:
     """
     Return foundation mass (in tons) based on power and foundation type.
     """
     if type=="onshore":
-        return np.clip(0.3873 * power + 108.8, None, 3500) #linear
-        #return np.clip((2e-6 * power**2) + (0.3702 * power) + 137.56, None, 3500) #polynomial
+        return 0.63 * np.power(power, 0.95)
     
     else:
-        return np.clip(0.1327 * power - 28.602, None, 7000) #linear
-        #return np.clip((2e-6 * power**2) + (0.0944 * power) + 106.23, None, 7000) #polynomial
+        return 0.08 * np.power(power, 1.06)
 
 def get_hub_height_from_rotor_diameter(diameter: float) -> float:
 
-    return 2.87 + np.power(diameter, 0.75) + 2.01
+    return 3.79 * np.power(diameter, 0.69)
 
-def get_tower_mass_from_hub_height(hub_height: float) -> float:
-
-    return max(1.14 + np.power(hub_height, 1.2) - 68.2, 5)
+def get_tower_mass_from_power(power: int) -> float:
+    """
+    Return tower mass (in tons) based on power and hub height.
+    """
+    return 0.29 * np.power(power, 0.84)
 
     
 def get_nacelle_mass_from_power(power: int) -> float:
     """
     Return nacelle mass (in tons) based on power and foundation type.
     """
-    return 3.29e-2 * np.power(power, 1.02) - 0.8
+    return 0.0249 * np.power(power, 1.0529)
 
 
 def get_rotor_mass_from_rotor_diameter(diameter):
 
-    return 4.56e-2 * np.power(diameter, 1.58) - 5.79
+    return 0.02 * np.power(diameter, 1.73)
 
 def get_rotor_diameter_from_power(power: int) -> float:
     """
     Return rotor diameter (in meters) based on power.
     """
-    return (-0.19 * power) + (36.53 * np.power(power, 2)) - (656.47 * np.power(power, 3))
+    return 2.18 * np.power(power, 0.49)
     
 def get_electricity_production(capacity_factor: float, power: int, lifetime: int) -> float:
     """
@@ -161,11 +368,11 @@ def create_new_dataset(dataset, power):
 
     new_dataset = copy.deepcopy(dataset)
 
-    new_dataset["name"] = new_dataset["name"].replace("2MW", f"{'{:.1f}'.format(power/1000)}MW").replace("800kW", f"{'{:.1f}'.format(power/1000)}MW")
-    new_dataset["reference product"] = new_dataset["reference product"].replace("2MW", f"{'{:.1f}'.format(power/1000)}MW").replace("800kW", f"{'{:.1f}'.format(power/1000)}MW")
+    new_dataset["name"] = new_dataset["name"].replace("2MW", f"{'{:.1f}'.format(int(power/1000))}MW").replace("800kW", f"{'{:.1f}'.format(int(power/1000))}MW")
+    new_dataset["reference product"] = new_dataset["reference product"].replace("2MW", f"{'{:.1f}'.format(int(power/1000))}MW").replace("800kW", f"{'{:.1f}'.format(int(power/1000))}MW")
     new_dataset["code"] = str(uuid.uuid4().hex)
 
-    new_dataset["comment"] = f"Adapted from {dataset['name']} for a {power} kW wind turbine."
+    new_dataset["comment"] = ""
 
     for exc in ws.production(new_dataset):
         exc["name"] = new_dataset["name"]
@@ -173,32 +380,12 @@ def create_new_dataset(dataset, power):
         if "input" in exc:
             del exc["input"]
 
+    new_dataset["exchanges"] = [exc for exc in new_dataset["exchanges"] if exc["type"] == "production"]
+
     return new_dataset
 
 
-def get_current_masses_from_dataset(dataset, shares, components, components_type) -> Dict[str, float]:
 
-    components_masses = {component: 0 for component in components}
-
-    for exc in ws.technosphere(dataset):
-        df_share = shares.loc[
-            (shares["activity"] == exc["name"])
-            &(shares["reference product"] == exc["product"])
-            &(shares["location"] == exc["location"])
-            &(shares["part"] == components_type)
-        ]
-
-        if df_share[components].sum().sum() > 0:
-            for component in components:
-                if df_share[component].values[0] > 0:
-                    if exc["amount"]>0:
-                        if "concrete" in exc["name"] and exc["unit"] == "cubic meter":
-                            factor = 2400 #kg/m3
-                        else:
-                            factor = 1
-                        components_masses[component] += (exc["amount"] * df_share[component].values[0] * factor)
-
-    return components_masses
 
 def get_fleet_distribution(power: int, turbine_type: str) -> dict:
     """
@@ -260,7 +447,7 @@ def get_fleet_distribution(power: int, turbine_type: str) -> dict:
     optimized_weights = result.x / result.x.sum()
 
     # Validate the weighted average
-    assert np.isclose(np.sum(optimized_weights * bin_centers), power, rtol=1e-3)
+    assert np.isclose(np.sum(optimized_weights * bin_centers), power, rtol=1e-3), f"Weighted average mismatch: {np.sum(optimized_weights * bin_centers)} vs. {power}"
 
     # Return the final distribution as a dictionary
     return {int(center): optimized_weights[i] for i, center in enumerate(bin_centers)}
@@ -338,18 +525,69 @@ class WindTurbines(BaseTransformation):
         rotor_diameter = get_rotor_diameter_from_power(power)
 
         hub_height = get_hub_height_from_rotor_diameter(rotor_diameter)
-        tower = get_tower_mass_from_hub_height(hub_height) * 1000 # in kg
+        tower = get_tower_mass_from_power(power) * 1000 # in kg
 
         nacelle = get_nacelle_mass_from_power(power) * 1000 # in kg
         rotor = get_rotor_mass_from_rotor_diameter(rotor_diameter) * 1000 # in kg
 
-        #return grid as a fixed target mass
-        if turbine_type == "offshore":
-            grid_connector = 92000  # in kg
-        else:
-            grid_connector = 19000  # in kg
+        sea_depth = 20 #m for offshore
+        pile_height = get_pile_height(power, sea_depth)
 
-        return {"foundation": foundation, "tower": tower, "nacelle": nacelle, "rotor": rotor, "grid connector": grid_connector}
+        if turbine_type == "onshore":
+            pile_mass = 0
+            transition_mass = 0
+        else:
+            pile_mass = get_pile_mass(power, pile_height)
+            transition_length = get_transition_height()(pile_height)
+            transition_mass = get_transition_mass(transition_length)
+
+        # medium-voltage transformer: we assume 1 mega-volt-ampere per 1 MW of power + 10%
+        medium_voltage_transformer = 1.1 * power / 1000  # in MVA
+
+        # high-voltage transformer: allocated between number of turbines in the park
+        # assumed 10 turbines per park
+        turbines_per_park = 10
+        high_voltage_transformer = 1 / turbines_per_park
+
+        distance_to_transformer = 200
+        distance_to_coast = 2000
+        # cable/grid connection
+        if turbine_type == "offshore":
+            cable_mass = set_offshore_cable_requirements(
+                power=power,
+                cross_section=1500,
+                dist_transfo=distance_to_transformer,
+                dist_coast=distance_to_coast,
+                park_size=turbines_per_park,
+            )[0]
+
+        else:
+            cable_mass = set_onshore_cable_requirements(
+                power=power,
+                tower_height=hub_height,
+                distance_m=distance_to_transformer,
+            )
+
+        return {
+            "foundation": int(foundation),
+            "tower": int(tower),
+            "nacelle": int(nacelle),
+            "rotor": int(rotor),
+            "pile": int(pile_mass),
+            "transition": int(transition_mass),
+            "electronic cabinet": 1,
+            "grid connector": int(cable_mass),
+            "medium-voltage transformer": medium_voltage_transformer,
+            "high-voltage transformer": high_voltage_transformer,
+            "rotor diameter": int(rotor_diameter),
+            "hub height": int(hub_height),
+            "sea depth": int(sea_depth),
+            "pile height": int(pile_height),
+            "turbines in park": turbines_per_park,
+            "distance to transformer": int(distance_to_transformer),
+            "distance to coast": int(distance_to_coast),
+
+        }
 
     def create_wind_turbine_datasets(self, turbine_type):
         """
@@ -398,90 +636,241 @@ class WindTurbines(BaseTransformation):
                 power
             )
 
-            components_shares = get_components_mass_shares(turbine_type)
-
-            COLUMNS = {
-                "fixed": [
-                    "foundation",
-                    "tower",
-                    "platform",
-                    #"grid connector"
-                ],
-                "moving": [
-                    "nacelle",
-                    "rotor",
-                    "other",
-                    "transformer + cabinet",
-                ]
-            }
-
-            #added because the grid connection is a part of the moving parts for the 800kW onshore wind turbine.
-            if turbine_type == "onshore":
-                COLUMNS["moving"].append("grid connector")
-            elif turbine_type == "offshore":
-                COLUMNS["fixed"].append("grid connector")
-
-            current_component_masses = get_current_masses_from_dataset(fixed, components_shares, COLUMNS["fixed"], "fixed")
-            current_component_masses.update(get_current_masses_from_dataset(moving, components_shares, COLUMNS["moving"], "moving"))
             target_component_masses = self.get_target_component_masses(turbine_type, power)
 
-            scaling_factors = {
-                component: target_component_masses.get(component, 0) / current_component_masses.get(component, 1)
-                for component in COLUMNS["fixed"] + COLUMNS["moving"]
-                                 if current_component_masses.get(component, 1) > 0
+            components_datasets = {
+                "rotor": {
+                    "dataset": {
+                        "onshore": "rotor production, for onshore wind turbine",
+                        "offshore": "rotor production, for offshore wind turbine",
+                        "amount": target_component_masses["rotor"],
+                    },
+                    "eol": {
+                        "onshore": "treatment of rotor, for onshore wind turbine",
+                        "offshore": "treatment of rotor, for offshore wind turbine",
+                        "amount": target_component_masses["rotor"] * -1,
+                    },
+                },
+                "nacelle": {
+                    "dataset": {
+                        "onshore": "nacelle production, for onshore wind turbine",
+                        "offshore": "nacelle production, for offshore wind turbine",
+                        "amount": target_component_masses["nacelle"],
+                    },
+                    "eol": {
+                        "onshore": "treatment of nacelle, for onshore wind turbine",
+                        "offshore": "treatment of nacelle, for offshore wind turbine",
+                        "amount": target_component_masses["nacelle"] * -1,
+                    },
+                },
+                "tower": {
+                    "dataset": {
+                        "onshore": "tower production, for onshore wind turbine",
+                        "offshore": "tower production, for offshore wind turbine",
+                        "amount": target_component_masses["tower"],
+                    },
+                    "eol": {
+                        "onshore": "treatment of tower, for onshore wind turbine",
+                        "offshore": "treatment of tower, for offshore wind turbine",
+                        "amount": target_component_masses["tower"] * -1,
+                    },
+                },
+                "electronic cabinet": {
+                    "dataset": {
+                        "onshore": "electronic cabinet production, for wind turbine",
+                        "offshore": "electronic cabinet production, for wind turbine",
+                        "amount": 1,
+                    },
+                    "eol": {
+                        "onshore": "treatment of electronic cabinet, for wind turbine",
+                        "offshore": "treatment of electronic cabinet, for wind turbine",
+                        "amount": -1,
+                    },
+                },
+                "grid connector": {
+                    "dataset": {
+                        "onshore": "grid connector production, per kg of copper, for wind turbine",
+                        "offshore": "grid connector production, per kg of copper, for wind turbine",
+                        "amount": target_component_masses["grid connector"],
+                    },
+                    "eol": {
+                        "onshore": "treatment of grid connector, for wind turbine",
+                        "offshore": "treatment of grid connector, for wind turbine",
+                        "amount": target_component_masses["grid connector"] * -1,
+                    },
+                },
+                "transition": {
+                    "dataset": {
+                        "onshore": "platform production, for onshore wind turbine",
+                        "offshore": "platform production, for offshore wind turbine",
+                        "amount": target_component_masses["transition"]
+                    },
+                    "eol": {
+                        "onshore": "treatment of platform, for onshore wind turbine",
+                        "offshore": "treatment of platform, for offshore wind turbine",
+                        "amount": target_component_masses["transition"] * -1,
+                    },
+                },
+                "pile": {
+                    "dataset": {
+                        "onshore": "market for steel, low-alloyed, hot rolled",
+                        "offshore": "market for steel, low-alloyed, hot rolled",
+                        "amount": target_component_masses["pile"]
+                    },
+                    "eol": {
+                        "onshore": "treatment of pile, for onshore wind turbine",
+                        "offshore": "treatment of pile, for offshore wind turbine",
+                        "amount": target_component_masses["pile"] * -1,
+                    },
+                },
+                "medium-voltage transformer": {
+                    "dataset": {
+                        "onshore": "medium-voltage transformer production, for wind turbine",
+                        "offshore": "medium-voltage transformer production, for wind turbine",
+                        "amount": target_component_masses["medium-voltage transformer"]
+                    },
+                    "eol": {
+                        "onshore": "treatment of medium-voltage transformer, for wind turbine",
+                        "offshore": "treatment of medium-voltage transformer, for wind turbine",
+                        "amount": target_component_masses["medium-voltage transformer"] * -1,
+                    },
+                },
+                "high-voltage transformer": {
+                    "dataset": {
+                        "onshore": "high-voltage transformer production, for wind turbine",
+                        "offshore": "high-voltage transformer production, for wind turbine",
+                        "amount": target_component_masses["high-voltage transformer"]
+                    },
+                    "eol": {
+                        "onshore": "treatment of high-voltage transformer, for wind turbine",
+                        "offshore": "treatment of high-voltage transformer, for wind turbine",
+                        "amount": target_component_masses["high-voltage transformer"] * -1,
+                    },
+                },
+                "foundation": {
+                    "dataset": {
+                        "onshore": "foundation production, for onshore wind turbine",
+                        "offshore": "foundation production, for offshore wind turbine",
+                        "amount": target_component_masses["foundation"]
+                    },
+                    "eol": {
+                        "onshore": "treatment of foundation, for onshore wind turbine",
+                        "offshore": "treatment of foundation, for offshore wind turbine",
+                        "amount": target_component_masses["foundation"] * -1,
+                    },
+                },
             }
 
-            for key, val in scaling_factors.items():
-                if (turbine_type, power, key, val) not in summary_scaling_factors:
-                    summary_scaling_factors.append((turbine_type, power, key, val))
+            for component in [
+                "rotor",
+                "nacelle",
+            ]:
 
-            for components_type, dataset in {
-                "moving": moving,
-                "fixed": fixed,
-            }.items():
-                for exc in ws.technosphere(
-                    dataset,
-                ):
-                    df_share = components_shares.loc[
-                        (components_shares["activity"] == exc["name"])
-                        &(components_shares["reference product"] == exc["product"])
-                        &(components_shares["location"] == exc["location"])
-                        &(components_shares["part"] == components_type)
+                ds = ws.get_one(
+                    self.database,
+                    ws.equals("name", components_datasets[component]["dataset"][turbine_type]),
+                )
+
+                eol = ws.get_one(
+                    self.database,
+                    ws.equals("name", components_datasets[component]["eol"][turbine_type]),
+                )
+
+                moving["exchanges"].extend(
+                    [
+                        {
+                            "amount": components_datasets[component]["dataset"]["amount"],
+                            "type": "technosphere",
+                            "unit": ds["unit"],
+                            "name": ds["name"],
+                            "product": ds["reference product"],
+                            "location": ds["location"],
+                            "uncertainty type": 0,
+                        },
+                        {
+                            "amount": components_datasets[component]["eol"]["amount"],
+                            "type": "technosphere",
+                            "unit": eol["unit"],
+                            "name": eol["name"],
+                            "product": eol["reference product"],
+                            "location": eol["location"],
+                            "uncertainty type": 0,
+                        },
                     ]
+                )
 
-                    weighted_scaling_factor = 0
+                moving["comment"] += f"\n{component.capitalize()} mass: {components_datasets[component]['dataset']['amount'] / 1000} tons."
 
-                    if df_share[COLUMNS[components_type]].sum().sum() > 0:
-                        for component in COLUMNS[components_type]:
-                            if df_share[component].values[0] > 0:
-                                weighted_scaling_factor += scaling_factors[component] * df_share[component].values[0]
+            moving["comment"] += f"\nRotor diameter: {target_component_masses['rotor diameter']} m. "
+            moving["comment"] += f"\nHub height: {target_component_masses['hub height']} m. "
+            moving["comment"] += f"\nNumber of turbines in park: {target_component_masses['turbines in park']}. "
+            moving["comment"] += f"\nDistance to transformer: {target_component_masses['distance to transformer']} m. "
+            if turbine_type == "offshore":
+                moving["comment"] += f"\nSea depth: {target_component_masses['sea depth']} m. "
+                moving["comment"] += f"\nPile height: {target_component_masses['pile height']} m. "
+                moving["comment"] += f"\nDistance to coast: {target_component_masses['distance to coast']} m. "
 
-                    if weighted_scaling_factor > 0:
-                        exc["amount"] *= weighted_scaling_factor
+            for component in [
+                "tower",
+                "grid connector",
+                "foundation",
+                "electronic cabinet",
+                "transition",
+                "medium-voltage transformer",
+                "high-voltage transformer",
+            ]:
 
-                        if exc.get("uncertainty type") == 2:
-                            # log normal distribution
-                            exc["loc"] = math.log(exc["amount"])
+                ds = ws.get_one(
+                    self.database,
+                    ws.equals("name", components_datasets[component]["dataset"][turbine_type]),
+                )
 
-                        exc["comment"] = f"Original amount: {exc['amount'] / weighted_scaling_factor}. Scaling factor: {weighted_scaling_factor}."
+                eol = ws.get_one(
+                    self.database,
+                    ws.equals("name", components_datasets[component]["eol"][turbine_type]),
+                )
 
-                dataset["comment"] += f" Scaling factors: {scaling_factors}."
+                fixed["exchanges"].extend(
+                    [
+                        {
+                            "amount": components_datasets[component]["dataset"]["amount"],
+                            "type": "technosphere",
+                            "unit": ds["unit"],
+                            "name": ds["name"],
+                            "product": ds["reference product"],
+                            "location": ds["location"],
+                            "uncertainty type": 0,
+                        },
+                        {
+                            "amount": components_datasets[component]["eol"]["amount"],
+                            "type": "technosphere",
+                            "unit": eol["unit"],
+                            "name": eol["name"],
+                            "product": eol["reference product"],
+                            "location": eol["location"],
+                            "uncertainty type": 0,
+                        },
+                    ]
+                )
 
-            # add 0.5 kWh electricity consumption per kg of material
-            # in the moving parts
-            # mass of moving parts
-            mass_moving = sum(target_component_masses.get(component, 0) for component in COLUMNS["moving"])
-            # electricity consumption
-            electricity_consumption = 0.5 * mass_moving
+                if component in (
+                        "electronic cabinet",
+                        "medium-voltage transformer",
+                        "high-voltage transformer",
+                ):
+                    fixed[
+                        "comment"] += f"\n{component.capitalize()} mass: {components_datasets[component]['dataset']['amount']} units."
+                else:
+                    fixed["comment"] += f"\n{component.capitalize()} mass: {components_datasets[component]['dataset']['amount'] / 1000} tons."
 
-            for exc in ws.technosphere(moving):
-                if "electricity" in exc["name"] and exc["unit"] == "kilowatt hour":
-                    exc["comment"] = f"Original amount: {exc['amount']}. New amount: {electricity_consumption}. 0.5 kWh per kg of material in the moving parts. Mass of moving parts: {mass_moving} kg."
-                    exc["amount"] = electricity_consumption
-
-                    if exc.get("uncertainty type") == 2:
-                        # log normal distribution
-                        exc["loc"] = math.log(exc["amount"])
+            fixed["comment"] += f"\nRotor diameter: {target_component_masses['rotor diameter']} m. "
+            fixed["comment"] += f"\nHub height: {target_component_masses['hub height']} m. "
+            fixed["comment"] += f"\nNumber of turbines in park: {target_component_masses['turbines in park']}. "
+            fixed["comment"] += f"\nDistance to transformer: {target_component_masses['distance to transformer']} m. "
+            if turbine_type == "offshore":
+                fixed["comment"] += f"\nSea depth: {target_component_masses['sea depth']} m. "
+                fixed["comment"] += f"\nPile height: {target_component_masses['pile height']} m. "
+                fixed["comment"] += f"\nDistance to coast: {target_component_masses['distance to coast']} m. "
 
             # add the new dataset to the database
             self.database.append(fixed)
@@ -523,11 +912,15 @@ class WindTurbines(BaseTransformation):
                     electricity_ds = wurst.copy_to_new_location(electricity_ds, country)
 
                 # modify the name of the dataset
-                electricity_ds["name"] = f"electricity production, wind, {'{:.1f}'.format(power/1000)}MW turbine, {turbine_type}"
+                electricity_ds["name"] = f"electricity production, wind, {'{:.1f}'.format(int(power/1000))}MW turbine, {turbine_type}"
                 electricity_ds["reference product"] = f"electricity, high voltage"
                 electricity_ds["code"] = str(uuid.uuid4().hex)
-                electricity_ds["comment"] = (f"Generated from {dataset_name} for a {power} kW wind turbine."
-                                             f"Assumed lifetime: 20 years. Capacity factor: {cf}%.")
+                electricity_ds["comment"] = (
+                    f"Generated for a {power} kW wind turbine."
+                    f"Assumed lifetime: 20 years. "
+                    f"Lifetime production: {production / 1e6} GWh. "
+                    f"Capacity factor: {cf * 100}%."
+                )
 
                 # modify the production exchange name
                 for exc in ws.production(electricity_ds):
@@ -541,12 +934,6 @@ class WindTurbines(BaseTransformation):
                     exc for exc in electricity_ds["exchanges"]
                     if exc["unit"] != "unit"
                 ]
-
-                # we need to scale up the use of oil
-                # by the ratio between the new and old rated power
-                #for exc in ws.technosphere(electricity_ds):
-                #    if "oil" in exc["name"]:
-                #        exc["amount"] *= power / (2000 if turbine_type == "offshore" else 800)
 
                 electricity_ds["exchanges"].extend([
                     {
@@ -580,21 +967,13 @@ class WindTurbines(BaseTransformation):
 
                 results.append([country, cf, turbine_type, production, production/20])
 
-        # pretty-table of summary scaling factors
-        x = prettytable.PrettyTable()
-        x.field_names = ["Turbine type", "Power (kW)", "Component", "Scaling factor"]
-        for row in summary_scaling_factors:
-            x.add_row(row)
-        print(x)
-        print()
-
         fleet_average_power = get_power_from_year(self.year, turbine_type)
         fleet_average_power = np.clip(
             fleet_average_power,
             0,
-            max_power
+            max_power - 1000
         )
-        # create a capacity distribution base don the fleet average capacity
+        # create a capacity distribution based on the fleet average capacity
         fleet_distribution = get_fleet_distribution(
             fleet_average_power, turbine_type
         )
@@ -622,7 +1001,7 @@ class WindTurbines(BaseTransformation):
                         "amount": fleet_distribution[p],
                         "type": "technosphere",
                         "unit": "kilowatt hour",
-                        "name": f"electricity production, wind, {'{:.1f}'.format(p/1000)}MW turbine, {turbine_type}",
+                        "name": f"electricity production, wind, {'{:.1f}'.format(int(p/1000))}MW turbine, {turbine_type}",
                         "product": f"electricity, high voltage",
                         "location": country,
                         "uncertainty type": 0,
