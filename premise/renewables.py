@@ -15,6 +15,9 @@ import yaml
 import csv
 from scipy.stats import  truncnorm
 from scipy.optimize import minimize
+import scipy.stats as stats
+from scipy.optimize import fsolve
+import scipy.integrate as integrate
 
 from .export import biosphere_flows_dictionary
 from .filesystem_constants import VARIABLES_DIR
@@ -973,10 +976,11 @@ class WindTurbines(BaseTransformation):
             0,
             max_power - 1000
         )
-        # create a capacity distribution based on the fleet average capacity
-        fleet_distribution = get_fleet_distribution(
-            fleet_average_power, turbine_type
-        )
+        lower_bound = 1  # MW
+        upper_bound = 22  # MW
+
+        # Generate the binned skewed distribution
+        bin_edges, fleet_distribution = get_fleet_distribution(fleet_average_power, lower_bound, upper_bound, skew_factor=0.5)
 
         # create, for each country, a fleet average dataset for the wind turbines
         # considering the fleet capacity distribution
