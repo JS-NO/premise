@@ -1,0 +1,7 @@
+# correction factor to apply to capacity factor obtained from Global Wind Atlas
+---
+1000: 0.5
+3000: 1.0
+8000: 1.1
+12000: 1.2
+16000: 1.3

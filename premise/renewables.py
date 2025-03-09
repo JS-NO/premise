@@ -89,10 +89,34 @@ def get_capacity_factors() -> pd.DataFrame:
         keep_default_na=False, na_values=['']
     )
 
+def get_capacity_factor_correction() -> dict:
+    """
+    Return the capacity factor correction factors for onshore and offshore wind turbines.
+    Correction factors calculated by fetching wind speed time series
+    for a sample of locations and calculating the ratio of the average
+    capacity factor of a 3MW turbines (as given by Gloabl Wind Atlas) to the capacity factor calculated using the
+    power curve of the same turbine.
+    """
+
+    return {
+        1000: 0.53,
+        2000: 0.84,
+        3000: 1.0,
+        4000: 1.05,
+        6000: 1.10, # corrected
+        8000: 1.12, # corrected
+        9000: 1.15, # corrected
+        10000: 1.17,
+        12000: 1.23,
+        15000: 1.31,
+        18000: 1.39,
+        21000: 1.45
+    }
+
 
 def get_power_from_year(year: int, type: str) -> int:
     """
-    Return fleet average power (in kW) of wind tubrine based on
+    Return fleet average power (in kW) of wind turbine based on
     type (offshore/onshore) and year.
     """
 
@@ -405,16 +429,22 @@ def get_fleet_distribution(mean, lower_bound, upper_bound, skew_factor=1.0) -> d
         bin_edges (numpy.ndarray): Array of bin edges.
         binned_pdf (numpy.ndarray): Normalized probability density function per bin.
     """
-    # Define a function to solve for the lognormal parameters
+    # Function to solve for lognormal parameters while ensuring the truncated mean equals `mean`
     def objective(lognorm_params):
         shape, log_scale = lognorm_params
         scale = np.exp(log_scale)
         dist = stats.lognorm(s=shape, scale=scale)
-        expected_mean = dist.mean()
-        expected_variance = dist.var()
-        return [expected_mean - mean, expected_variance - (skew_factor * mean) ** 2]  # Increase variance to skew right
 
-    # Initial guess: lognormal with standard deviation around log(mean)
+        # Compute the truncated mean over [lower_bound, upper_bound]
+        normalization_factor, _ = integrate.quad(lambda x: dist.pdf(x), lower_bound, upper_bound)
+        truncated_mean_numerator, _ = integrate.quad(lambda x: x * dist.pdf(x), lower_bound, upper_bound)
+        truncated_mean = truncated_mean_numerator / normalization_factor  # Mean within truncation limits
+
+        expected_variance = dist.var()
+
+        return [truncated_mean - mean, expected_variance - (skew_factor * mean) ** 2]  # Adjust skew
+
+    # Initial guess
     initial_guess = [1.0, np.log(mean)]
     shape_opt, log_scale_opt = fsolve(objective, initial_guess)
 
@@ -503,6 +533,7 @@ class WindTurbines(BaseTransformation):
         )
 
         self.capacity_factors = get_capacity_factors()
+        self.correction_factor = get_capacity_factor_correction()
 
     def get_target_component_masses(self, turbine_type: str, power: int) -> Dict[str, float]:
 
@@ -872,6 +903,10 @@ class WindTurbines(BaseTransformation):
                 country = row["country"]
                 cf = row[turbine_type]
 
+                # we correct it, because the CF we get is for
+                # a 3MW turbine
+                cf *= self.correction_factor[power]
+
                 # check that cf is not NaN
                 if np.isnan(cf):
                     continue
@@ -965,11 +1000,14 @@ class WindTurbines(BaseTransformation):
             powers[-1] - 1000
         )
         lower_bound = 1  # MW
-        upper_bound = (powers[-1] + 1000) / 1000  # MW
+        upper_bound = min(powers, key=lambda x: abs(x - (fleet_average_power * 1.5))) / 1000
 
         # Generate the binned skewed distribution
-        bin_edges, binned_pdf = get_fleet_distribution(fleet_average_power, lower_bound, upper_bound, skew_factor=0.5)
+        bin_edges, binned_pdf = get_fleet_distribution(fleet_average_power / 1000, lower_bound, upper_bound, skew_factor=0.5)
         fleet_distribution = dict(zip(bin_edges * 1000, binned_pdf))
+
+        # make sure values sum to 1
+        fleet_distribution = {k: v / sum(fleet_distribution.values()) for k, v in fleet_distribution.items()}
 
         # Initialize aggregated fleet distribution
         aggregated_fleet_distribution = {p: 0 for p in powers}
@@ -979,11 +1017,6 @@ class WindTurbines(BaseTransformation):
             # Find the closest power in the provided list
             closest_power = min(powers, key=lambda x: abs(x - capacity))
             aggregated_fleet_distribution[closest_power] += value
-
-        print(fleet_average_power)
-        print(fleet_distribution)
-        print(aggregated_fleet_distribution)
-
 
         # create, for each country, a fleet average dataset for the wind turbines
         # considering the fleet capacity distribution
