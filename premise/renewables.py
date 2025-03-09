@@ -602,6 +602,7 @@ class WindTurbines(BaseTransformation):
             "turbines in park": turbines_per_park,
             "distance to transformer": int(distance_to_transformer),
             "distance to coast": int(distance_to_coast),
+            "total mass": int(tower + nacelle + rotor + pile_mass + transition_mass),
 
         }
 
@@ -781,6 +782,20 @@ class WindTurbines(BaseTransformation):
                         "amount": target_component_masses["foundation"] * -1,
                     },
                 },
+                "assembly": {
+                    "dataset": {
+                        "onshore": "wind turbine components assembly, for wind turbine",
+                        "offshore": "wind turbine components assembly, for wind turbine",
+                        "amount": target_component_masses["total mass"],
+                    },
+                },
+                "installation": {
+                    "dataset": {
+                        "onshore": "wind turbine installation, for onshore wind turbine",
+                        "offshore": "wind turbine installation, for onshore wind turbine",
+                        "amount": target_component_masses["total mass"],
+                    },
+                },
             }
 
             for component in [
@@ -840,6 +855,8 @@ class WindTurbines(BaseTransformation):
                 "transition",
                 "medium-voltage transformer",
                 "high-voltage transformer",
+                "assembly",
+                "installation"
             ]:
 
                 ds = ws.get_one(
@@ -847,13 +864,7 @@ class WindTurbines(BaseTransformation):
                     ws.equals("name", components_datasets[component]["dataset"][turbine_type]),
                 )
 
-                eol = ws.get_one(
-                    self.database,
-                    ws.equals("name", components_datasets[component]["eol"][turbine_type]),
-                )
-
-                fixed["exchanges"].extend(
-                    [
+                fixed["exchanges"].append(
                         {
                             "amount": components_datasets[component]["dataset"]["amount"],
                             "type": "technosphere",
@@ -862,7 +873,16 @@ class WindTurbines(BaseTransformation):
                             "product": ds["reference product"],
                             "location": ds["location"],
                             "uncertainty type": 0,
-                        },
+                        }
+                )
+
+                if "eol" in components_datasets[component]:
+                    eol = ws.get_one(
+                        self.database,
+                        ws.equals("name", components_datasets[component]["eol"][turbine_type]),
+                    )
+
+                    fixed["exchanges"].append(
                         {
                             "amount": components_datasets[component]["eol"]["amount"],
                             "type": "technosphere",
@@ -871,9 +891,8 @@ class WindTurbines(BaseTransformation):
                             "product": eol["reference product"],
                             "location": eol["location"],
                             "uncertainty type": 0,
-                        },
-                    ]
-                )
+                        }
+                    )
 
                 if component in (
                         "electronic cabinet",
